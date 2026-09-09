@@ -3,8 +3,10 @@ package com.github.chsssssss.eonje.ui.placedetail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.chsssssss.eonje.data.local.TagEntity
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.github.chsssssss.eonje.domain.repository.TagRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,6 +14,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -22,6 +25,7 @@ class PlaceDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val placeRepository: PlaceRepository,
     private val savedPostRepository: SavedPostRepository,
+    private val tagRepository: TagRepository,
 ) : ViewModel() {
 
     private val placeId: String = checkNotNull(savedStateHandle[EonjeDestinations.PLACE_DETAIL_ID_ARG])
@@ -55,6 +59,16 @@ class PlaceDetailViewModel @Inject constructor(
                 )
             }
         }
+
+        viewModelScope.launch {
+            combine(
+                tagRepository.observeTagsForPlace(placeId),
+                tagRepository.observeAll(),
+            ) { attached, all -> attached to all }
+                .collect { (attached, all) ->
+                    _uiState.update { it.copy(tags = attached, allTags = all) }
+                }
+        }
     }
 
     fun onDirectionsClick() {
@@ -62,6 +76,29 @@ class PlaceDetailViewModel @Inject constructor(
     }
 
     fun onAddTagClick() {
-        _toastMessages.trySend("태그 기능은 아직 준비 중이에요")
+        _uiState.update { it.copy(showTagPicker = true) }
+    }
+
+    fun onDismissTagPicker() {
+        _uiState.update { it.copy(showTagPicker = false) }
+    }
+
+    fun onToggleTag(tag: TagEntity) {
+        val isAttached = _uiState.value.tags.any { it.id == tag.id }
+        viewModelScope.launch {
+            if (isAttached) {
+                tagRepository.detachTagFromPlace(placeId, tag.id)
+            } else {
+                tagRepository.attachTagToPlace(placeId, tag.id)
+            }
+        }
+    }
+
+    fun onCreateTag(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            val tag = tagRepository.findOrCreateByName(name)
+            tagRepository.attachTagToPlace(placeId, tag.id)
+        }
     }
 }

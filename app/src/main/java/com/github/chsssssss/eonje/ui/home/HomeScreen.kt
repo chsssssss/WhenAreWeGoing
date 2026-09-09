@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +22,8 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.github.chsssssss.eonje.data.local.TagEntity
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
@@ -49,17 +50,17 @@ fun HomeScreen(
         uiState = uiState,
         onToggleView = viewModel::toggleView,
         onPlaceClick = onPlaceClick,
+        onSelectTag = viewModel::onSelectTag,
         modifier = modifier,
     )
 }
-
-private val filterLabels = listOf("데이트", "혼밥", "모임", "카페")
 
 @Composable
 private fun HomeContent(
     uiState: HomeUiState,
     onToggleView: () -> Unit,
     onPlaceClick: (String) -> Unit,
+    onSelectTag: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -68,7 +69,12 @@ private fun HomeContent(
             .background(EonjeColors.background)
     ) {
         if (uiState.isMapView) {
-            MapMock(places = uiState.places, highlighted = uiState.highlighted)
+            KakaoMapView(
+                places = uiState.places,
+                highlightedId = uiState.highlighted?.id,
+                onPlaceClick = onPlaceClick,
+                modifier = Modifier.fillMaxSize(),
+            )
         } else {
             PlaceList(places = uiState.places, onPlaceClick = onPlaceClick)
         }
@@ -81,7 +87,13 @@ private fun HomeContent(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SearchBar()
-            FilterChipsRow(totalCount = uiState.places.size, pendingCount = uiState.pendingCount)
+            FilterChipsRow(
+                totalCount = uiState.totalCount,
+                tags = uiState.tags,
+                selectedTagId = uiState.selectedTagId,
+                pendingCount = uiState.pendingCount,
+                onSelectTag = onSelectTag,
+            )
         }
 
         Column(
@@ -123,10 +135,21 @@ private fun SearchBar() {
 }
 
 @Composable
-private fun FilterChipsRow(totalCount: Int, pendingCount: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(label = "전체 $totalCount", selected = true)
-        filterLabels.forEach { FilterChip(label = it, selected = false) }
+private fun FilterChipsRow(
+    totalCount: Int,
+    tags: List<TagEntity>,
+    selectedTagId: String?,
+    pendingCount: Int,
+    onSelectTag: (String?) -> Unit,
+) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(label = "전체 $totalCount", selected = selectedTagId == null, onClick = { onSelectTag(null) })
+        tags.forEach { tag ->
+            FilterChip(label = tag.name, selected = selectedTagId == tag.id, onClick = { onSelectTag(tag.id) })
+        }
     }
     if (pendingCount > 0) {
         Spacer(Modifier.height(4.dp))
@@ -146,7 +169,7 @@ private fun FilterChipsRow(totalCount: Int, pendingCount: Int) {
 }
 
 @Composable
-private fun FilterChip(label: String, selected: Boolean) {
+private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(17.dp)
     Box(
         modifier = Modifier
@@ -154,6 +177,7 @@ private fun FilterChip(label: String, selected: Boolean) {
             .clip(shape)
             .background(if (selected) EonjeColors.accent else EonjeColors.surface.copy(alpha = 0.8f))
             .then(if (!selected) Modifier.border(1.dp, EonjeColors.border, shape) else Modifier)
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -276,69 +300,18 @@ private fun PlaceList(places: List<HomePlace>, onPlaceClick: (String) -> Unit) {
     }
 }
 
-@Composable
-private fun MapMock(places: List<HomePlace>, highlighted: HomePlace?, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(EonjeColors.mapBackground),
-    ) {
-        // faint abstract street lines, purely decorative
-        Box(Modifier.offset(y = 150.dp).fillMaxWidth().height(1.dp).background(EonjeColors.surfaceVariant))
-        Box(Modifier.offset(y = 360.dp).fillMaxWidth().height(2.dp).background(EonjeColors.border))
-        Box(Modifier.offset(y = 600.dp).fillMaxWidth().height(1.dp).background(EonjeColors.surfaceVariant))
-        Box(Modifier.offset(x = 104.dp).width(1.dp).fillMaxSize().background(EonjeColors.surfaceVariant))
-
-        if (highlighted == null) {
-            Box(modifier = Modifier.fillMaxSize().padding(top = 220.dp), contentAlignment = Alignment.TopCenter) {
-                Text("저장된 장소가 없어요", style = Typography.bodyMedium, color = EonjeColors.textMuted)
-            }
-            return@Box
-        }
-
-        val pinOffsets = listOf(40.dp to 200.dp, 210.dp to 150.dp, 280.dp to 360.dp)
-        places.drop(1).take(pinOffsets.size).forEachIndexed { index, _ ->
-            val (x, y) = pinOffsets[index]
-            MapPin(Modifier.offset(x = x, y = y))
-        }
-        MapPinHighlighted(highlighted, Modifier.offset(x = 150.dp, y = 400.dp))
-    }
-}
-
-@Composable
-private fun MapPin(modifier: Modifier = Modifier) {
-    PlaceholderImage(
-        modifier = modifier
-            .size(40.dp)
-            .clip(CircleShape),
-        circle = true,
-    )
-}
-
-@Composable
-private fun MapPinHighlighted(place: HomePlace, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        PlaceholderImage(
-            modifier = Modifier.size(58.dp).clip(CircleShape),
-            circle = true,
-        )
-        Spacer(Modifier.height(8.dp))
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(EonjeColors.accent)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        ) {
-            Text(place.name, style = Typography.labelSmall, color = EonjeColors.onAccent)
-        }
-    }
-}
-
 private val previewPlaces = listOf(
-    HomePlace("p1", "연남토마", "파스타", "서울 마포구 동교로"),
-    HomePlace("p2", "잇쇼우", "이자카야", "서울 용산구 이태원로"),
-    HomePlace("p3", "소격동 국수집", "국수", "서울 종로구 소격동"),
-    HomePlace("p4", "한남 스시하루", "스시", "서울 용산구 한남대로"),
+    HomePlace("p1", "연남토마", "파스타", "서울 마포구 동교로", 37.5657, 126.9247),
+    HomePlace("p2", "잇쇼우", "이자카야", "서울 용산구 이태원로", 37.5347, 126.9946),
+    HomePlace("p3", "소격동 국수집", "국수", "서울 종로구 소격동", 37.5773, 126.9822),
+    HomePlace("p4", "한남 스시하루", "스시", "서울 용산구 한남대로", 37.5344, 127.0016),
+)
+
+private val previewTags = listOf(
+    TagEntity("preset-date", "데이트", isPreset = true),
+    TagEntity("preset-solo", "혼밥", isPreset = true),
+    TagEntity("preset-group", "모임", isPreset = true),
+    TagEntity("preset-cafe", "카페", isPreset = true),
 )
 
 @Preview(showBackground = true, backgroundColor = 0xFF121316)
@@ -346,9 +319,16 @@ private val previewPlaces = listOf(
 private fun HomeScreenMapPreview() {
     EonjeTheme {
         HomeContent(
-            uiState = HomeUiState(isMapView = true, pendingCount = 7, places = previewPlaces),
+            uiState = HomeUiState(
+                isMapView = true,
+                pendingCount = 7,
+                places = previewPlaces,
+                totalCount = previewPlaces.size,
+                tags = previewTags,
+            ),
             onToggleView = {},
             onPlaceClick = {},
+            onSelectTag = {},
         )
     }
 }
@@ -358,9 +338,16 @@ private fun HomeScreenMapPreview() {
 private fun HomeScreenListPreview() {
     EonjeTheme {
         HomeContent(
-            uiState = HomeUiState(isMapView = false, pendingCount = 7, places = previewPlaces),
+            uiState = HomeUiState(
+                isMapView = false,
+                pendingCount = 7,
+                places = previewPlaces,
+                totalCount = previewPlaces.size,
+                tags = previewTags,
+            ),
             onToggleView = {},
             onPlaceClick = {},
+            onSelectTag = {},
         )
     }
 }

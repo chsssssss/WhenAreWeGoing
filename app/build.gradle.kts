@@ -37,6 +37,11 @@ android {
             "KAKAO_REST_API_KEY",
             "\"${localProperties.getProperty("KAKAO_REST_API_KEY", "")}\""
         )
+        buildConfigField(
+            "String",
+            "KAKAO_NATIVE_APP_KEY",
+            "\"${localProperties.getProperty("KAKAO_NATIVE_APP_KEY", "")}\""
+        )
     }
 
     buildTypes {
@@ -73,6 +78,8 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
 
     implementation(libs.androidx.navigation.compose)
+
+    implementation(libs.kakao.maps)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

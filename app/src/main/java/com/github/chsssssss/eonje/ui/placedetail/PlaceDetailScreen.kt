@@ -14,37 +14,49 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.github.chsssssss.eonje.data.local.TagEntity
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
 import com.github.chsssssss.eonje.ui.theme.Typography
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaceDetailScreen(
     onNavigateBack: () -> Unit,
@@ -65,6 +77,21 @@ fun PlaceDetailScreen(
         onAddTagClick = viewModel::onAddTagClick,
         modifier = modifier,
     )
+
+    if (uiState.showTagPicker) {
+        ModalBottomSheet(
+            onDismissRequest = viewModel::onDismissTagPicker,
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = EonjeColors.surface,
+        ) {
+            TagPickerContent(
+                attachedTags = uiState.tags,
+                allTags = uiState.allTags,
+                onToggleTag = viewModel::onToggleTag,
+                onCreateTag = viewModel::onCreateTag,
+            )
+        }
+    }
 }
 
 @Composable
@@ -127,6 +154,7 @@ private fun PlaceDetailContent(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    uiState.tags.forEach { tag -> Tag(tag.name) }
                     AddTagChip(onClick = onAddTagClick)
                 }
 
@@ -207,6 +235,20 @@ private fun RoundIconButton(
 }
 
 @Composable
+private fun Tag(label: String) {
+    Box(
+        modifier = Modifier
+            .height(32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(EonjeColors.accent.copy(alpha = 0.13f))
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = Typography.labelMedium, color = EonjeColors.accent)
+    }
+}
+
+@Composable
 private fun AddTagChip(onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
@@ -239,6 +281,92 @@ private fun PlacePostRow(post: PlacePost) {
             Text(post.savedAt, style = Typography.labelSmall, color = EonjeColors.textMuted)
         }
         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = EonjeColors.iconMuted)
+    }
+}
+
+@Composable
+private fun TagPickerContent(
+    attachedTags: List<TagEntity>,
+    allTags: List<TagEntity>,
+    onToggleTag: (TagEntity) -> Unit,
+    onCreateTag: (String) -> Unit,
+) {
+    var newTagName by remember { mutableStateOf("") }
+    val attachedIds = attachedTags.map { it.id }.toSet()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(20.dp, 4.dp, 20.dp, 22.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Text("태그", style = Typography.titleLarge, color = EonjeColors.textPrimary)
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(allTags, key = { it.id }) { tag ->
+                SelectableTagChip(
+                    label = tag.name,
+                    selected = tag.id in attachedIds,
+                    onClick = { onToggleTag(tag) },
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(EonjeColors.surfaceVariant)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BasicTextField(
+                value = newTagName,
+                onValueChange = { newTagName = it },
+                textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                decorationBox = { inner ->
+                    if (newTagName.isEmpty()) {
+                        Text("새 태그 이름", style = Typography.bodyLarge, color = EonjeColors.textMuted)
+                    }
+                    inner()
+                },
+            )
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = "태그 추가",
+                tint = EonjeColors.accent,
+                modifier = Modifier
+                    .size(20.dp)
+                    .clickable(enabled = newTagName.isNotBlank()) {
+                        onCreateTag(newTagName)
+                        newTagName = ""
+                    },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectableTagChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = Modifier
+            .height(32.dp)
+            .clip(shape)
+            .background(if (selected) EonjeColors.accent else EonjeColors.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = Typography.labelMedium,
+            color = if (selected) EonjeColors.onAccent else EonjeColors.textSecondary,
+        )
     }
 }
 
