@@ -2,4 +2,11 @@
 <resources>
 
     <style name="Theme.Eonje" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Eonje.Transparent" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>
