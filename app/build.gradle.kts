@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.kakao.maps)
+    implementation(libs.coil.compose)
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)

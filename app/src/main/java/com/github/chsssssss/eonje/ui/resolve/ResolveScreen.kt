@@ -122,6 +122,7 @@ private fun ResolveContent(
         ) {
             PlaceholderImage(
                 modifier = Modifier.size(96.dp),
+                imageUrl = uiState.thumbnailUrl,
                 cornerRadius = 0.dp,
                 label = "인스타 원본",
             )

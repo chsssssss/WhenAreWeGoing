@@ -158,7 +158,7 @@ private fun AccountRow(account: AccountUiModel, onRetrySync: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlaceholderImage(modifier = Modifier.size(52.dp), circle = true)
+        PlaceholderImage(modifier = Modifier.size(52.dp), imageUrl = account.profileImageUrl, circle = true)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(account.username, style = Typography.titleMedium, color = EonjeColors.textPrimary)
             if (account.isError) {

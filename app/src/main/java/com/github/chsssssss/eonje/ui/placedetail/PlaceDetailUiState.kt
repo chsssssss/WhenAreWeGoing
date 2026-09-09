@@ -6,6 +6,7 @@ data class PlacePost(
     val id: String,
     val label: String,
     val savedAt: String,
+    val thumbnailUrl: String? = null,
 )
 
 data class PlaceDetailUiState(

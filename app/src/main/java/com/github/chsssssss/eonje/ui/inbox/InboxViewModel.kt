@@ -3,6 +3,7 @@ package com.github.chsssssss.eonje.ui.inbox
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
+import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +23,9 @@ class InboxViewModel @Inject constructor(
             InboxUiState(
                 items = posts.map { it.toInboxItem() },
                 isLoading = false,
+                // UNRESOLVED는 캐시 미스(미등록 계정 포함)나 파싱 실패를 모두 포함한다.
+                // 어느 쪽이든 계정을 등록하면 다음 동기화에서 자동 재매칭을 시도한다.
+                showUnregisteredAccountBanner = posts.any { it.status == ResolveStatus.UNRESOLVED },
             )
         }
         .stateIn(
@@ -35,5 +39,6 @@ class InboxViewModel @Inject constructor(
         instagramUrl = instagramUrl,
         relativeTime = RelativeTimeFormatter.format(createdAt),
         extractedCount = extractedCount,
+        thumbnailUrl = thumbnailUrl,
     )
 }

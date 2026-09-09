@@ -19,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import com.github.chsssssss.eonje.ui.theme.Typography
 @Composable
 fun InboxScreen(
     onItemClick: (String) -> Unit,
+    onNavigateToAccounts: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InboxViewModel = hiltViewModel(),
 ) {
@@ -46,6 +48,7 @@ fun InboxScreen(
     InboxContent(
         uiState = uiState,
         onItemClick = onItemClick,
+        onNavigateToAccounts = onNavigateToAccounts,
         modifier = modifier,
     )
 }
@@ -54,6 +57,7 @@ fun InboxScreen(
 private fun InboxContent(
     uiState: InboxUiState,
     onItemClick: (String) -> Unit,
+    onNavigateToAccounts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -68,6 +72,13 @@ private fun InboxContent(
                 text = if (uiState.items.isEmpty()) "정리할 게시물이 없어요" else "${uiState.items.size}개 정리 대기",
                 style = Typography.bodyMedium,
                 color = EonjeColors.textMuted,
+            )
+        }
+
+        if (uiState.showUnregisteredAccountBanner) {
+            UnregisteredAccountBanner(
+                onClick = onNavigateToAccounts,
+                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
             )
         }
 
@@ -98,6 +109,27 @@ private fun InboxContent(
 }
 
 @Composable
+private fun UnregisteredAccountBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(EonjeColors.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Warning, contentDescription = null, tint = EonjeColors.warning)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("자동으로 정리되지 않는 게시물이 있어요", style = Typography.bodyMedium, color = EonjeColors.textPrimary)
+            Text("맛집 계정을 등록하면 다음부터 자동으로 매칭돼요", style = Typography.labelSmall, color = EonjeColors.textMuted)
+        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = EonjeColors.iconMuted)
+    }
+}
+
+@Composable
 private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
     Row(
         modifier = Modifier
@@ -111,6 +143,7 @@ private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
     ) {
         PlaceholderImage(
             modifier = Modifier.size(88.dp),
+            imageUrl = item.thumbnailUrl,
             cornerRadius = 16.dp,
             label = "인스타 썸네일",
         )
@@ -151,8 +184,10 @@ private fun InboxScreenPreview() {
                     InboxItem("2", "https://instagram.com/p/def/", "3일 전"),
                 ),
                 isLoading = false,
+                showUnregisteredAccountBanner = true,
             ),
             onItemClick = {},
+            onNavigateToAccounts = {},
         )
     }
 }
@@ -161,6 +196,6 @@ private fun InboxScreenPreview() {
 @Composable
 private fun InboxScreenEmptyPreview() {
     EonjeTheme {
-        InboxContent(uiState = InboxUiState(isLoading = false), onItemClick = {})
+        InboxContent(uiState = InboxUiState(isLoading = false), onItemClick = {}, onNavigateToAccounts = {})
     }
 }

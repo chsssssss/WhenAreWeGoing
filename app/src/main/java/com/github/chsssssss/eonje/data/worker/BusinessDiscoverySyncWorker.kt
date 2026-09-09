@@ -8,8 +8,10 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkerParameters
+import com.github.chsssssss.eonje.data.local.TokenStatusStore
 import com.github.chsssssss.eonje.domain.repository.CachedMediaRepository
 import com.github.chsssssss.eonje.domain.repository.InstagramBusinessDiscoveryRepository
+import com.github.chsssssss.eonje.domain.repository.InstagramTokenExpiredException
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
 import com.github.chsssssss.eonje.domain.usecase.MatchPostUseCase
@@ -27,16 +29,28 @@ class BusinessDiscoverySyncWorker @AssistedInject constructor(
     private val cachedMediaRepository: CachedMediaRepository,
     private val savedPostRepository: SavedPostRepository,
     private val matchPostUseCase: MatchPostUseCase,
+    private val tokenStatusStore: TokenStatusStore,
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        watchedAccountRepository.getAll().forEach { account ->
-            val discovered = discoveryRepository.discover(account.username).getOrNull()
-            if (discovered == null) {
-                watchedAccountRepository.markSyncFailed(account.username, "동기화 실패")
-                return@forEach
+        for (account in watchedAccountRepository.getAll()) {
+            val result = discoveryRepository.discover(account.username)
+            val error = result.exceptionOrNull()
+
+            if (error is InstagramTokenExpiredException) {
+                // 토큰 만료 → 앱 내 배너, 동기화 중단. 나머지 계정도 같은 토큰을 쓰므로 이번 실행은 여기서 멈춘다.
+                watchedAccountRepository.markSyncFailed(account.username, "토큰 만료 · 설정에서 확인해주세요")
+                tokenStatusStore.markInstagramTokenExpired()
+                break
             }
 
+            val discovered = result.getOrNull()
+            if (discovered == null) {
+                watchedAccountRepository.markSyncFailed(account.username, "동기화 실패")
+                continue
+            }
+
+            tokenStatusStore.clearInstagramTokenExpired()
             cachedMediaRepository.replaceForAccount(account.username, discovered.media)
             watchedAccountRepository.markSynced(account.username)
 

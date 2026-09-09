@@ -59,6 +59,7 @@ class ResolveViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     instagramUrl = post?.instagramUrl.orEmpty(),
+                    thumbnailUrl = post?.thumbnailUrl,
                     subtitle = post?.let { p -> RelativeTimeFormatter.format(p.createdAt) + " 저장" }.orEmpty(),
                     isLoadingPost = false,
                     isMultiMode = isMulti,

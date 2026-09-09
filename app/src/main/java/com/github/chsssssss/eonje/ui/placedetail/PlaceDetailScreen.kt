@@ -115,7 +115,12 @@ private fun PlaceDetailContent(
     Column(modifier = modifier.fillMaxSize().background(EonjeColors.background)) {
         Column(modifier = Modifier.weight(1f)) {
             Box(modifier = Modifier.fillMaxWidth().height(260.dp)) {
-                PlaceholderImage(modifier = Modifier.fillMaxSize(), cornerRadius = 0.dp, label = "대표 사진")
+                PlaceholderImage(
+                    modifier = Modifier.fillMaxSize(),
+                    imageUrl = uiState.posts.firstNotNullOfOrNull { it.thumbnailUrl },
+                    cornerRadius = 0.dp,
+                    label = "대표 사진",
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -275,7 +280,7 @@ private fun PlacePostRow(post: PlacePost) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlaceholderImage(modifier = Modifier.size(56.dp), cornerRadius = 12.dp)
+        PlaceholderImage(modifier = Modifier.size(56.dp), imageUrl = post.thumbnailUrl, cornerRadius = 12.dp)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(post.label, style = Typography.bodyMedium, color = EonjeColors.textSecondary)
             Text(post.savedAt, style = Typography.labelSmall, color = EonjeColors.textMuted)

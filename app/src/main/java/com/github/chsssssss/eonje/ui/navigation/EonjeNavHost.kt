@@ -32,6 +32,7 @@ fun EonjeNavHost(
         composable(EonjeDestinations.INBOX) {
             InboxScreen(
                 onItemClick = { postId -> navController.navigate(EonjeDestinations.resolveRoute(postId)) },
+                onNavigateToAccounts = { navController.navigate(EonjeDestinations.ACCOUNTS) },
             )
         }
         composable(EonjeDestinations.SETTINGS) {

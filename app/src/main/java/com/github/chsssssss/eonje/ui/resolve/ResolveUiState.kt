@@ -14,6 +14,7 @@ data class MultiCandidateGroup(
 data class ResolveUiState(
     val postId: String = "",
     val instagramUrl: String = "",
+    val thumbnailUrl: String? = null,
     val subtitle: String = "",
     val isLoadingPost: Boolean = true,
     val isMultiMode: Boolean = false,

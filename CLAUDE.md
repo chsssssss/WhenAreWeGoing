@@ -221,31 +221,31 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 
 ## 개발 단계
 
-### 현재: 1단계 — 저장 파이프라인
+### 1단계 — 저장 파이프라인 (완료)
 
 Business Discovery 없이 동작하는 최소 흐름.
 이 단계만으로 실제로 쓸 수 있는 앱이 된다.
 
-- [ ] 의존성 추가 (Room, Hilt, Navigation Compose, Coroutines, Retrofit)
-- [ ] ShareReceiverActivity — 인텐트 수신, 토스트, finish()
-- [ ] URL 파싱 유틸 — shortcode 추출
-- [ ] Room 세팅 — SavedPostEntity, Dao, Database
-- [ ] InboxScreen — 저장된 카드 목록
-- [ ] ResolveScreen — 카카오 로컬 검색 + 장소 확정 (단일 모드)
+- [x] 의존성 추가 (Room, Hilt, Navigation Compose, Coroutines, Retrofit)
+- [x] ShareReceiverActivity — 인텐트 수신, 토스트, finish()
+- [x] URL 파싱 유틸 — shortcode 추출
+- [x] Room 세팅 — SavedPostEntity, Dao, Database
+- [x] InboxScreen — 저장된 카드 목록
+- [x] ResolveScreen — 카카오 로컬 검색 + 장소 확정 (단일 모드)
 
-### 2단계 — 조회 기능
+### 2단계 — 조회 기능 (완료)
 
-- [ ] PlaceEntity, PostPlaceCrossRef Room 세팅
-- [ ] HomeScreen — 지도, 리스트 토글, 태그 필터
-- [ ] PlaceDetailScreen
+- [x] PlaceEntity, PostPlaceCrossRef Room 세팅
+- [x] HomeScreen — 지도, 리스트 토글, 태그 필터
+- [x] PlaceDetailScreen
 
-### 3단계 — 자동 매칭 (App Review 병행)
+### 현재: 3단계 — 자동 매칭 (App Review 병행)
 
-- [ ] WatchedAccountEntity, CachedMediaEntity Room 세팅
-- [ ] AccountsScreen — 계정 등록
-- [ ] Business Discovery 동기화 WorkManager
-- [ ] 캡션 파싱 WorkManager (LLM + 카카오 로컬)
-- [ ] ResolveScreen 다중 모드
+- [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
+- [x] AccountsScreen — 계정 등록
+- [x] Business Discovery 동기화 WorkManager
+- [x] 캡션 파싱 WorkManager (LLM + 카카오 로컬)
+- [x] ResolveScreen 다중 모드
 
 ### 3.5단계 — 이미지 파싱
 

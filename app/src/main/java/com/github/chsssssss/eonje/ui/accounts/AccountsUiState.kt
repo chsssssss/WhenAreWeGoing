@@ -4,6 +4,7 @@ data class AccountUiModel(
     val username: String,
     val statusText: String,
     val isError: Boolean = false,
+    val profileImageUrl: String? = null,
 )
 
 data class AccountsUiState(

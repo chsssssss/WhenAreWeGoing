@@ -1,8 +1,10 @@
 package com.github.chsssssss.eonje.domain.usecase
 
+import com.github.chsssssss.eonje.data.local.TokenStatusStore
 import com.github.chsssssss.eonje.data.local.WatchedAccountEntity
 import com.github.chsssssss.eonje.domain.repository.CachedMediaRepository
 import com.github.chsssssss.eonje.domain.repository.InstagramBusinessDiscoveryRepository
+import com.github.chsssssss.eonje.domain.repository.InstagramTokenExpiredException
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
 import javax.inject.Inject
@@ -19,6 +21,7 @@ class RegisterAccountUseCase @Inject constructor(
     private val cachedMediaRepository: CachedMediaRepository,
     private val savedPostRepository: SavedPostRepository,
     private val matchPostUseCase: MatchPostUseCase,
+    private val tokenStatusStore: TokenStatusStore,
 ) {
     suspend operator fun invoke(username: String): RegisterAccountResult {
         val cleanUsername = username.removePrefix("@").trim()
@@ -26,9 +29,12 @@ class RegisterAccountUseCase @Inject constructor(
             return RegisterAccountResult.Failed("계정 아이디를 입력해주세요")
         }
 
-        val account = discoveryRepository.discover(cleanUsername).getOrElse {
+        val discovered = discoveryRepository.discover(cleanUsername)
+        val account = discovered.getOrElse {
+            if (it is InstagramTokenExpiredException) tokenStatusStore.markInstagramTokenExpired()
             return RegisterAccountResult.Failed(it.message ?: "계정을 확인할 수 없어요")
         }
+        tokenStatusStore.clearInstagramTokenExpired()
 
         watchedAccountRepository.save(
             WatchedAccountEntity(

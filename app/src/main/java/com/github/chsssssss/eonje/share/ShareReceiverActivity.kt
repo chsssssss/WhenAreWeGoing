@@ -4,11 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.lifecycle.lifecycleScope
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostResult
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostUseCase
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -29,11 +28,10 @@ class ShareReceiverActivity : ComponentActivity() {
             return
         }
 
-        lifecycleScope.launch {
-            val result = saveSharedPostUseCase(sharedText)
-            showToast(result)
-            finish()
-        }
+        // F1은 항상 성공해야 한다 — Room 저장 하나뿐이라 밀리초 단위이므로 finish() 전에 동기적으로 끝낸다.
+        val result = runBlocking { saveSharedPostUseCase(sharedText) }
+        showToast(result)
+        finish()
     }
 
     private fun showToast(result: SaveSharedPostResult) {

@@ -103,6 +103,7 @@ class AccountsViewModel @Inject constructor(
             username = "@$username",
             statusText = statusText,
             isError = lastSyncError != null,
+            profileImageUrl = profileImageUrl,
         )
     }
 }

@@ -2,16 +2,22 @@ package com.github.chsssssss.eonje.data.worker
 
 import android.content.Context
 import androidx.hilt.work.HiltWorker
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkRequest
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.github.chsssssss.eonje.domain.usecase.MatchPostResult
 import com.github.chsssssss.eonje.domain.usecase.MatchPostUseCase
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
 private const val KEY_POST_ID = "postId"
+private const val MAX_RETRY_ATTEMPTS = 5
 
 @HiltWorker
 class CaptionParsingWorker @AssistedInject constructor(
@@ -22,14 +28,34 @@ class CaptionParsingWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val postId = inputData.getString(KEY_POST_ID) ?: return Result.failure()
-        matchPostUseCase(postId)
-        return Result.success()
+        return when (matchPostUseCase(postId)) {
+            MatchPostResult.Done -> Result.success()
+            MatchPostResult.Retry -> {
+                if (runAttemptCount >= MAX_RETRY_ATTEMPTS) {
+                    // 네트워크 없음 → 지수 백오프 재시도. 재시도 한도를 넘기면 조용히 UNRESOLVED로 넘긴다.
+                    matchPostUseCase.markUnresolved(postId)
+                    Result.success()
+                } else {
+                    Result.retry()
+                }
+            }
+        }
     }
 
     companion object {
         fun request(postId: String) =
             OneTimeWorkRequestBuilder<CaptionParsingWorker>()
                 .setInputData(inputData(postId))
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .setBackoffCriteria(
+                    BackoffPolicy.EXPONENTIAL,
+                    WorkRequest.MIN_BACKOFF_MILLIS,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
                 .build()
 
         private fun inputData(postId: String): Data = workDataOf(KEY_POST_ID to postId)

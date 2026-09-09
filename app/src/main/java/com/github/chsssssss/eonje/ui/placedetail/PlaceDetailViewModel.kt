@@ -54,6 +54,7 @@ class PlaceDetailViewModel @Inject constructor(
                             id = post.id,
                             label = post.instagramUrl,
                             savedAt = RelativeTimeFormatter.format(post.createdAt) + " 저장",
+                            thumbnailUrl = post.thumbnailUrl,
                         )
                     },
                 )

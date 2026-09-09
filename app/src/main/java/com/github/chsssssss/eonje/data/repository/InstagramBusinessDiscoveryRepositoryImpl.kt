@@ -6,16 +6,25 @@ import com.github.chsssssss.eonje.data.remote.instagram.MediaItemDto
 import com.github.chsssssss.eonje.domain.model.DiscoveredAccount
 import com.github.chsssssss.eonje.domain.model.DiscoveredMedia
 import com.github.chsssssss.eonje.domain.repository.InstagramBusinessDiscoveryRepository
+import com.github.chsssssss.eonje.data.remote.instagram.BusinessDiscoveryResponse
+import com.github.chsssssss.eonje.domain.repository.InstagramTokenExpiredException
 import com.github.chsssssss.eonje.domain.util.InstagramUrlParser
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import retrofit2.HttpException
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ")
 
+// https://developers.facebook.com/docs/graph-api/guides/error-handling — 190 = 만료되었거나 무효한 OAuth 액세스 토큰.
+private const val OAUTH_ERROR_CODE = 190
+
 class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
     private val api: InstagramBusinessDiscoveryApi,
+    private val json: Json,
 ) : InstagramBusinessDiscoveryRepository {
 
     override suspend fun discover(username: String): Result<DiscoveredAccount> {
@@ -32,7 +41,11 @@ class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
             )
             val discovery = response.businessDiscovery
                 ?: return Result.failure(
-                    IllegalStateException(response.error?.message ?: "발견할 수 없는 계정이에요. 프로페셔널 계정인지 확인해주세요")
+                    if (response.error?.code == OAUTH_ERROR_CODE) {
+                        InstagramTokenExpiredException(response.error.message ?: "인스타그램 연동 토큰이 만료됐어요")
+                    } else {
+                        IllegalStateException(response.error?.message ?: "발견할 수 없는 계정이에요. 프로페셔널 계정인지 확인해주세요")
+                    }
                 )
             val igUserId = discovery.id
                 ?: return Result.failure(IllegalStateException("계정 정보를 확인할 수 없어요"))
@@ -47,8 +60,24 @@ class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
             )
         } catch (e: CancellationException) {
             throw e
+        } catch (e: HttpException) {
+            Result.failure(e.toDomainException())
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    // Graph API는 만료/무효 토큰을 200이 아닌 HTTP 에러 상태로 응답하므로, 에러 바디를 직접 들여다봐야 한다.
+    private fun HttpException.toDomainException(): Exception {
+        val errorCode = runCatching {
+            response()?.errorBody()?.string()
+                ?.let { json.decodeFromString<BusinessDiscoveryResponse>(it) }
+                ?.error?.code
+        }.getOrNull()
+        return if (errorCode == OAUTH_ERROR_CODE) {
+            InstagramTokenExpiredException("인스타그램 연동 토큰이 만료됐어요")
+        } else {
+            this
         }
     }
 
