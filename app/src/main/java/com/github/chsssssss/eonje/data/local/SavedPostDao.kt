@@ -43,4 +43,7 @@ interface SavedPostDao {
         """
     )
     suspend fun findUnresolvedByAccount(username: String): List<SavedPostEntity>
+
+    @Query("DELETE FROM saved_posts WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
 }

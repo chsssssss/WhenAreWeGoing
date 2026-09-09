@@ -1,5 +1,7 @@
 package com.github.chsssssss.eonje.ui.resolve
 
+import android.content.Context
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,7 +15,9 @@ import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
+import com.github.chsssssss.eonje.widget.InboxWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +44,7 @@ class ResolveViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val extractedCandidateRepository: ExtractedCandidateRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val postId: String = checkNotNull(savedStateHandle[EonjeDestinations.RESOLVE_POST_ID_ARG])
@@ -179,6 +184,7 @@ class ResolveViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true) }
             savePlace(candidate)
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
+            InboxWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
             _events.send(ResolveEvent.Toast("${candidate.name} 저장됨"))
@@ -196,6 +202,7 @@ class ResolveViewModel @Inject constructor(
             toSave.forEach { group -> savePlace(group.selected!!) }
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
             extractedCandidateRepository.replaceForPost(postId, emptyList())
+            InboxWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
             val message = if (toSave.size == 1) "${toSave.first().selected!!.name} 저장됨" else "${toSave.size}곳 저장됨"

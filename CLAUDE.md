@@ -239,7 +239,7 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] HomeScreen — 지도, 리스트 토글, 태그 필터
 - [x] PlaceDetailScreen
 
-### 현재: 3단계 — 자동 매칭 (App Review 병행)
+### 3단계 — 자동 매칭 (App Review 병행) (완료)
 
 - [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
 - [x] AccountsScreen — 계정 등록
@@ -247,13 +247,15 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] 캡션 파싱 WorkManager (LLM + 카카오 로컬)
 - [x] ResolveScreen 다중 모드
 
-### 3.5단계 — 이미지 파싱
+### 3.5단계 — 이미지 파싱 (보류)
 
-캡션 파싱 적중률 실측 후 도입 여부 결정.
+캡션 파싱 적중률 실측 후 도입 여부 결정. 아직 실측 전이라 보류 중.
 
-### 4단계 — 다듬기
+### 현재: 4단계 — 다듬기
 
-위젯, 정리 알림, 오래된 미확정 항목 정리 제안.
+- [x] 위젯 — 인박스 정리 대기 개수를 보여주는 홈 화면 위젯
+- [x] 정리 알림 — 정리 안 된 게시물이 있으면 주기적으로(7일마다) 알림
+- [x] 오래된 미확정 항목 정리 제안 — 30일 넘은 항목을 인박스에서 일괄 삭제 제안
 
 ## 코딩 컨벤션
 

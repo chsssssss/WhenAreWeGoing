@@ -12,6 +12,7 @@ interface SavedPostRepository {
     suspend fun updateStatus(id: String, status: ResolveStatus)
     suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int)
     suspend fun findUnresolvedByAccount(username: String): List<SavedPostEntity>
+    suspend fun deleteByIds(ids: List<String>)
     fun observeAll(): Flow<List<SavedPostEntity>>
     fun observeUnresolved(): Flow<List<SavedPostEntity>>
 }

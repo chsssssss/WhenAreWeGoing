@@ -96,6 +96,7 @@ dependencies {
 
     implementation(libs.kakao.maps)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.glance.appwidget)
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)

@@ -20,8 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +51,9 @@ fun InboxScreen(
         uiState = uiState,
         onItemClick = onItemClick,
         onNavigateToAccounts = onNavigateToAccounts,
+        onCleanupStaleClick = viewModel::onCleanupStaleClick,
+        onConfirmCleanup = viewModel::onConfirmCleanup,
+        onDismissCleanupDialog = viewModel::onDismissCleanupDialog,
         modifier = modifier,
     )
 }
@@ -58,6 +63,9 @@ private fun InboxContent(
     uiState: InboxUiState,
     onItemClick: (String) -> Unit,
     onNavigateToAccounts: () -> Unit,
+    onCleanupStaleClick: () -> Unit,
+    onConfirmCleanup: () -> Unit,
+    onDismissCleanupDialog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -79,6 +87,22 @@ private fun InboxContent(
             UnregisteredAccountBanner(
                 onClick = onNavigateToAccounts,
                 modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
+            )
+        }
+
+        if (uiState.staleItemIds.isNotEmpty()) {
+            StaleCleanupBanner(
+                count = uiState.staleItemIds.size,
+                onClick = onCleanupStaleClick,
+                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
+            )
+        }
+
+        if (uiState.showCleanupDialog) {
+            CleanupConfirmDialog(
+                count = uiState.staleItemIds.size,
+                onConfirm = onConfirmCleanup,
+                onDismiss = onDismissCleanupDialog,
             )
         }
 
@@ -127,6 +151,41 @@ private fun UnregisteredAccountBanner(onClick: () -> Unit, modifier: Modifier = 
         }
         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = EonjeColors.iconMuted)
     }
+}
+
+@Composable
+private fun StaleCleanupBanner(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(EonjeColors.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("30일 넘게 정리되지 않은 게시물이 ${count}개 있어요", style = Typography.bodyMedium, color = EonjeColors.textPrimary)
+            Text("눌러서 한번에 정리해요", style = Typography.labelSmall, color = EonjeColors.textMuted)
+        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = EonjeColors.iconMuted)
+    }
+}
+
+@Composable
+private fun CleanupConfirmDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("오래된 게시물 정리") },
+        text = { Text("30일 넘게 정리되지 않은 게시물 ${count}개를 삭제할까요? 저장된 링크와 인식 결과가 모두 사라져요.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("삭제") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        },
+    )
 }
 
 @Composable
@@ -188,6 +247,9 @@ private fun InboxScreenPreview() {
             ),
             onItemClick = {},
             onNavigateToAccounts = {},
+            onCleanupStaleClick = {},
+            onConfirmCleanup = {},
+            onDismissCleanupDialog = {},
         )
     }
 }
@@ -196,6 +258,13 @@ private fun InboxScreenPreview() {
 @Composable
 private fun InboxScreenEmptyPreview() {
     EonjeTheme {
-        InboxContent(uiState = InboxUiState(isLoading = false), onItemClick = {}, onNavigateToAccounts = {})
+        InboxContent(
+            uiState = InboxUiState(isLoading = false),
+            onItemClick = {},
+            onNavigateToAccounts = {},
+            onCleanupStaleClick = {},
+            onConfirmCleanup = {},
+            onDismissCleanupDialog = {},
+        )
     }
 }

@@ -1,6 +1,8 @@
 package com.github.chsssssss.eonje.di
 
+import com.github.chsssssss.eonje.data.notification.InboxReminderNotifierImpl
 import com.github.chsssssss.eonje.data.notification.PlaceSavedNotifierImpl
+import com.github.chsssssss.eonje.domain.notification.InboxReminderNotifier
 import com.github.chsssssss.eonje.domain.notification.PlaceSavedNotifier
 import dagger.Binds
 import dagger.Module
@@ -14,4 +16,8 @@ abstract class NotificationModule {
     @Binds
     @Singleton
     abstract fun bindPlaceSavedNotifier(impl: PlaceSavedNotifierImpl): PlaceSavedNotifier
+
+    @Binds
+    @Singleton
+    abstract fun bindInboxReminderNotifier(impl: InboxReminderNotifierImpl): InboxReminderNotifier
 }

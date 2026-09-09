@@ -4,6 +4,8 @@ data class InboxUiState(
     val items: List<InboxItem> = emptyList(),
     val isLoading: Boolean = true,
     val showUnregisteredAccountBanner: Boolean = false,
+    val staleItemIds: List<String> = emptyList(),
+    val showCleanupDialog: Boolean = false,
 )
 
 data class InboxItem(

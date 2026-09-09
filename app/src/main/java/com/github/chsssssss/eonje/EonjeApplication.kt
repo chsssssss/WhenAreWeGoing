@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.worker.BusinessDiscoverySyncWorker
+import com.github.chsssssss.eonje.data.worker.InboxReminderWorker
 import com.kakao.vectormap.KakaoMapSdk
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -28,6 +29,11 @@ class EonjeApplication : Application(), Configuration.Provider {
             BusinessDiscoverySyncWorker.WORK_NAME,
             BusinessDiscoverySyncWorker.EXISTING_POLICY,
             BusinessDiscoverySyncWorker.periodicRequest(),
+        )
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            InboxReminderWorker.WORK_NAME,
+            InboxReminderWorker.EXISTING_POLICY,
+            InboxReminderWorker.periodicRequest(),
         )
     }
 }
