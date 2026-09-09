@@ -22,6 +22,12 @@ class SavedPostRepositoryImpl @Inject constructor(
     override suspend fun updateStatus(id: String, status: ResolveStatus) =
         dao.updateStatus(id, status)
 
+    override suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int) =
+        dao.updateExtraction(id, caption, thumbnailUrl, extractedCount)
+
+    override suspend fun findUnresolvedByAccount(username: String): List<SavedPostEntity> =
+        dao.findUnresolvedByAccount(username)
+
     override fun observeAll(): Flow<List<SavedPostEntity>> = dao.observeAll()
 
     override fun observeUnresolved(): Flow<List<SavedPostEntity>> = dao.observeUnresolved()

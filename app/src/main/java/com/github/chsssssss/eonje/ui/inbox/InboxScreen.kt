@@ -119,7 +119,7 @@ private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text(item.relativeTime, style = Typography.bodySmall, color = EonjeColors.textMuted)
-            CandidateStatusChip(candidateCount = 0)
+            CandidateStatusChip(candidateCount = item.extractedCount)
         }
         Icon(
             imageVector = Icons.Filled.ChevronRight,

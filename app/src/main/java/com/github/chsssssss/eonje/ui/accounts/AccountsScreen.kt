@@ -73,6 +73,7 @@ fun AccountsScreen(
         ) {
             AddAccountSheetContent(
                 username = uiState.usernameInput,
+                isRegistering = uiState.isRegistering,
                 onUsernameChange = viewModel::onUsernameChange,
                 onCancel = viewModel::onDismissAddSheet,
                 onConfirm = viewModel::onConfirmRegister,
@@ -116,14 +117,20 @@ private fun AccountsContent(
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(uiState.accounts, key = { it.username }) { account ->
-                    AccountRow(account = account, onRetrySync = { onRetrySync(account.username) })
+            if (uiState.accounts.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("등록된 계정이 없어요", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(uiState.accounts, key = { it.username }) { account ->
+                        AccountRow(account = account, onRetrySync = { onRetrySync(account.username) })
+                    }
                 }
             }
         }

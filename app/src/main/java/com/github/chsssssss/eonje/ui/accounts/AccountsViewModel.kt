@@ -1,42 +1,108 @@
 package com.github.chsssssss.eonje.ui.accounts
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.github.chsssssss.eonje.data.local.WatchedAccountEntity
+import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
+import com.github.chsssssss.eonje.domain.usecase.RegisterAccountResult
+import com.github.chsssssss.eonje.domain.usecase.RegisterAccountUseCase
+import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@HiltViewModel
-class AccountsViewModel @Inject constructor() : ViewModel() {
+private data class LocalAddState(
+    val isAddSheetVisible: Boolean = false,
+    val usernameInput: String = "",
+    val isRegistering: Boolean = false,
+)
 
-    private val _uiState = MutableStateFlow(AccountsUiState())
-    val uiState: StateFlow<AccountsUiState> = _uiState.asStateFlow()
+@HiltViewModel
+class AccountsViewModel @Inject constructor(
+    private val watchedAccountRepository: WatchedAccountRepository,
+    private val registerAccountUseCase: RegisterAccountUseCase,
+) : ViewModel() {
+
+    private val local = MutableStateFlow(LocalAddState())
 
     private val _toastMessages = Channel<String>(Channel.BUFFERED)
     val toastMessages = _toastMessages.receiveAsFlow()
 
+    val uiState: StateFlow<AccountsUiState> = combine(
+        watchedAccountRepository.observeAll(),
+        local,
+    ) { accounts, localState ->
+        AccountsUiState(
+            accounts = accounts.map { it.toUiModel() },
+            isAddSheetVisible = localState.isAddSheetVisible,
+            usernameInput = localState.usernameInput,
+            isRegistering = localState.isRegistering,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = AccountsUiState(),
+    )
+
     fun onAddAccountClick() {
-        _uiState.update { it.copy(isAddSheetVisible = true) }
+        local.update { it.copy(isAddSheetVisible = true, usernameInput = "") }
     }
 
     fun onDismissAddSheet() {
-        _uiState.update { it.copy(isAddSheetVisible = false) }
+        if (local.value.isRegistering) return
+        local.update { it.copy(isAddSheetVisible = false) }
     }
 
     fun onUsernameChange(value: String) {
-        _uiState.update { it.copy(usernameInput = value) }
+        local.update { it.copy(usernameInput = value) }
     }
 
     fun onConfirmRegister() {
-        _toastMessages.trySend("계정 등록은 3단계에서 지원돼요")
-        _uiState.update { it.copy(isAddSheetVisible = false) }
+        val username = local.value.usernameInput
+        if (username.isBlank() || local.value.isRegistering) return
+
+        local.update { it.copy(isRegistering = true) }
+        viewModelScope.launch {
+            when (val result = registerAccountUseCase(username)) {
+                is RegisterAccountResult.Registered -> {
+                    _toastMessages.trySend("계정이 등록됐어요")
+                    local.update { LocalAddState() }
+                }
+                is RegisterAccountResult.Failed -> {
+                    _toastMessages.trySend(result.message)
+                    local.update { it.copy(isRegistering = false) }
+                }
+            }
+        }
     }
 
     fun onRetrySync(username: String) {
-        _toastMessages.trySend("동기화 재시도는 3단계에서 지원돼요")
+        viewModelScope.launch {
+            when (val result = registerAccountUseCase(username)) {
+                is RegisterAccountResult.Registered -> _toastMessages.trySend("동기화를 다시 시도했어요")
+                is RegisterAccountResult.Failed -> _toastMessages.trySend(result.message)
+            }
+        }
+    }
+
+    private fun WatchedAccountEntity.toUiModel(): AccountUiModel {
+        val statusText = when {
+            lastSyncError != null -> "동기화 실패 · 다시 시도"
+            lastSyncedAt != null -> "${RelativeTimeFormatter.format(lastSyncedAt)} 동기화"
+            else -> "동기화 대기 중"
+        }
+        return AccountUiModel(
+            username = "@$username",
+            statusText = statusText,
+            isError = lastSyncError != null,
+        )
     }
 }

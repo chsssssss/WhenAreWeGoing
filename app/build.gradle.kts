@@ -42,6 +42,21 @@ android {
             "KAKAO_NATIVE_APP_KEY",
             "\"${localProperties.getProperty("KAKAO_NATIVE_APP_KEY", "")}\""
         )
+        buildConfigField(
+            "String",
+            "IG_BUSINESS_ACCOUNT_ID",
+            "\"${localProperties.getProperty("IG_BUSINESS_ACCOUNT_ID", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "IG_ACCESS_TOKEN",
+            "\"${localProperties.getProperty("IG_ACCESS_TOKEN", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "ANTHROPIC_API_KEY",
+            "\"${localProperties.getProperty("ANTHROPIC_API_KEY", "")}\""
+        )
     }
 
     buildTypes {
@@ -80,6 +95,10 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.kakao.maps)
+
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

@@ -24,9 +24,23 @@ interface SavedPostDao {
     @Query("UPDATE saved_posts SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: String, status: ResolveStatus)
 
+    @Query(
+        "UPDATE saved_posts SET caption = :caption, thumbnailUrl = :thumbnailUrl, extractedCount = :extractedCount WHERE id = :id"
+    )
+    suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int)
+
     @Query("SELECT * FROM saved_posts ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<SavedPostEntity>>
 
     @Query("SELECT * FROM saved_posts WHERE status != 'RESOLVED' ORDER BY createdAt DESC")
     fun observeUnresolved(): Flow<List<SavedPostEntity>>
+
+    @Query(
+        """
+        SELECT saved_posts.* FROM saved_posts
+        INNER JOIN cached_media ON saved_posts.shortcode = cached_media.shortcode
+        WHERE cached_media.username = :username AND saved_posts.status = 'UNRESOLVED'
+        """
+    )
+    suspend fun findUnresolvedByAccount(username: String): List<SavedPostEntity>
 }

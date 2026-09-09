@@ -34,5 +34,6 @@ class InboxViewModel @Inject constructor(
         id = id,
         instagramUrl = instagramUrl,
         relativeTime = RelativeTimeFormatter.format(createdAt),
+        extractedCount = extractedCount,
     )
 }

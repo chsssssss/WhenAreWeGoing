@@ -9,4 +9,5 @@ data class InboxItem(
     val id: String,
     val instagramUrl: String,
     val relativeTime: String,
+    val extractedCount: Int = 0,
 )

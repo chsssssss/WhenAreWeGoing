@@ -3,9 +3,11 @@ package com.github.chsssssss.eonje.ui.resolve
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
@@ -37,6 +39,7 @@ class ResolveViewModel @Inject constructor(
     private val savedPostRepository: SavedPostRepository,
     private val placeRepository: PlaceRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
+    private val extractedCandidateRepository: ExtractedCandidateRepository,
 ) : ViewModel() {
 
     private val postId: String = checkNotNull(savedStateHandle[EonjeDestinations.RESOLVE_POST_ID_ARG])
@@ -52,12 +55,19 @@ class ResolveViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val post = savedPostRepository.findById(postId)
+            val isMulti = post?.status == ResolveStatus.NEEDS_REVIEW
             _uiState.update {
                 it.copy(
                     instagramUrl = post?.instagramUrl.orEmpty(),
                     subtitle = post?.let { p -> RelativeTimeFormatter.format(p.createdAt) + " 저장" }.orEmpty(),
                     isLoadingPost = false,
+                    isMultiMode = isMulti,
                 )
+            }
+            if (isMulti) {
+                extractedCandidateRepository.observeForPost(postId).collect { rows ->
+                    _uiState.update { it.copy(multiGroups = buildGroups(rows)) }
+                }
             }
         }
 
@@ -68,6 +78,30 @@ class ResolveViewModel @Inject constructor(
                 .collectLatest { query -> runSearch(query) }
         }
     }
+
+    private fun buildGroups(rows: List<ExtractedCandidateEntity>): List<MultiCandidateGroup> =
+        rows.groupBy { it.extractionIndex }
+            .toSortedMap()
+            .map { (index, group) ->
+                val sorted = group.sortedBy { it.rank }
+                val candidates = sorted.map { it.toPlaceCandidate() }
+                MultiCandidateGroup(
+                    extractionIndex = index,
+                    extractedName = sorted.first().extractedName,
+                    candidates = candidates,
+                    selected = candidates.firstOrNull(),
+                    checked = candidates.isNotEmpty(),
+                )
+            }
+
+    private fun ExtractedCandidateEntity.toPlaceCandidate() = PlaceCandidate(
+        kakaoPlaceId = kakaoPlaceId,
+        name = name,
+        address = address,
+        category = category,
+        latitude = latitude,
+        longitude = longitude,
+    )
 
     private suspend fun runSearch(query: String) {
         if (query.isBlank()) {
@@ -99,36 +133,93 @@ class ResolveViewModel @Inject constructor(
         _events.trySend(ResolveEvent.Toast("원본 링크는 아직 열 수 없어요"))
     }
 
+    fun onToggleGroupChecked(extractionIndex: Int) {
+        _uiState.update { state ->
+            state.copy(
+                multiGroups = state.multiGroups.map {
+                    if (it.extractionIndex == extractionIndex) it.copy(checked = !it.checked) else it
+                }
+            )
+        }
+    }
+
+    fun onToggleGroupExpanded(extractionIndex: Int) {
+        _uiState.update { state ->
+            state.copy(
+                multiGroups = state.multiGroups.map {
+                    if (it.extractionIndex == extractionIndex) it.copy(expanded = !it.expanded) else it
+                }
+            )
+        }
+    }
+
+    fun onSelectMultiCandidate(extractionIndex: Int, candidate: PlaceCandidate) {
+        _uiState.update { state ->
+            state.copy(
+                multiGroups = state.multiGroups.map {
+                    if (it.extractionIndex == extractionIndex) {
+                        it.copy(selected = candidate, checked = true, expanded = false)
+                    } else it
+                }
+            )
+        }
+    }
+
     fun onConfirm() {
+        if (_uiState.value.isMultiMode) onConfirmMulti() else onConfirmSingle()
+    }
+
+    private fun onConfirmSingle() {
         val state = _uiState.value
         val candidate = state.selected ?: return
         if (state.isSaving) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
-
-            val now = System.currentTimeMillis()
-            val placeId = placeRepository.save(
-                PlaceEntity(
-                    id = UUID.randomUUID().toString(),
-                    name = candidate.name,
-                    address = candidate.address,
-                    latitude = candidate.latitude,
-                    longitude = candidate.longitude,
-                    kakaoPlaceId = candidate.kakaoPlaceId,
-                    category = candidate.category,
-                    memo = null,
-                    status = ResolveStatus.RESOLVED,
-                    createdAt = now,
-                    resolvedAt = now,
-                )
-            )
-            placeRepository.linkPostToPlace(postId, placeId)
+            savePlace(candidate)
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
 
             _uiState.update { it.copy(isSaving = false) }
             _events.send(ResolveEvent.Toast("${candidate.name} 저장됨"))
             _events.send(ResolveEvent.NavigateBack)
         }
+    }
+
+    private fun onConfirmMulti() {
+        val state = _uiState.value
+        val toSave = state.multiGroups.filter { it.checked && it.selected != null }
+        if (toSave.isEmpty() || state.isSaving) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true) }
+            toSave.forEach { group -> savePlace(group.selected!!) }
+            savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
+            extractedCandidateRepository.replaceForPost(postId, emptyList())
+
+            _uiState.update { it.copy(isSaving = false) }
+            val message = if (toSave.size == 1) "${toSave.first().selected!!.name} 저장됨" else "${toSave.size}곳 저장됨"
+            _events.send(ResolveEvent.Toast(message))
+            _events.send(ResolveEvent.NavigateBack)
+        }
+    }
+
+    private suspend fun savePlace(candidate: PlaceCandidate) {
+        val now = System.currentTimeMillis()
+        val placeId = placeRepository.save(
+            PlaceEntity(
+                id = UUID.randomUUID().toString(),
+                name = candidate.name,
+                address = candidate.address,
+                latitude = candidate.latitude,
+                longitude = candidate.longitude,
+                kakaoPlaceId = candidate.kakaoPlaceId,
+                category = candidate.category,
+                memo = null,
+                status = ResolveStatus.RESOLVED,
+                createdAt = now,
+                resolvedAt = now,
+            )
+        )
+        placeRepository.linkPostToPlace(postId, placeId)
     }
 }

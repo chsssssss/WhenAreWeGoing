@@ -14,12 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -70,6 +72,9 @@ fun ResolveScreen(
         onSelectCandidate = viewModel::onSelectCandidate,
         onOpenOriginal = viewModel::onOpenOriginal,
         onConfirm = viewModel::onConfirm,
+        onToggleGroupChecked = viewModel::onToggleGroupChecked,
+        onToggleGroupExpanded = viewModel::onToggleGroupExpanded,
+        onSelectMultiCandidate = viewModel::onSelectMultiCandidate,
         modifier = modifier,
     )
 }
@@ -82,6 +87,9 @@ private fun ResolveContent(
     onSelectCandidate: (PlaceCandidate) -> Unit,
     onOpenOriginal: () -> Unit,
     onConfirm: () -> Unit,
+    onToggleGroupChecked: (Int) -> Unit,
+    onToggleGroupExpanded: (Int) -> Unit,
+    onSelectMultiCandidate: (Int, PlaceCandidate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize().background(EonjeColors.background)) {
@@ -95,7 +103,11 @@ private fun ResolveContent(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기", tint = EonjeColors.textSecondary)
             }
             Column(modifier = Modifier.padding(start = 4.dp)) {
-                Text("가게 찾기", style = Typography.titleMedium, color = EonjeColors.textPrimary)
+                Text(
+                    if (uiState.isMultiMode) "저장할 가게 선택" else "가게 찾기",
+                    style = Typography.titleMedium,
+                    color = EonjeColors.textPrimary,
+                )
                 if (uiState.subtitle.isNotBlank()) {
                     Text(uiState.subtitle, style = Typography.labelSmall, color = EonjeColors.textMuted)
                 }
@@ -131,38 +143,48 @@ private fun ResolveContent(
             }
         }
 
-        Row(
-            modifier = Modifier
-                .padding(16.dp, 0.dp, 16.dp, 14.dp)
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(EonjeColors.surfaceVariant)
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = EonjeColors.textMuted, modifier = Modifier.size(18.dp))
-            BasicTextField(
-                value = uiState.query,
-                onValueChange = onQueryChange,
-                textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
-                singleLine = true,
+        if (uiState.isMultiMode) {
+            MultiResultsArea(
+                groups = uiState.multiGroups,
+                onToggleChecked = onToggleGroupChecked,
+                onToggleExpanded = onToggleGroupExpanded,
+                onSelectCandidate = onSelectMultiCandidate,
                 modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    if (uiState.query.isEmpty()) {
-                        Text("가게 이름으로 검색", style = Typography.bodyLarge, color = EonjeColors.textMuted)
-                    }
-                    inner()
-                },
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp, 0.dp, 16.dp, 14.dp)
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(EonjeColors.surfaceVariant)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = EonjeColors.textMuted, modifier = Modifier.size(18.dp))
+                BasicTextField(
+                    value = uiState.query,
+                    onValueChange = onQueryChange,
+                    textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        if (uiState.query.isEmpty()) {
+                            Text("가게 이름으로 검색", style = Typography.bodyLarge, color = EonjeColors.textMuted)
+                        }
+                        inner()
+                    },
+                )
+            }
+
+            ResultsArea(
+                uiState = uiState,
+                onSelectCandidate = onSelectCandidate,
+                modifier = Modifier.weight(1f),
             )
         }
-
-        ResultsArea(
-            uiState = uiState,
-            onSelectCandidate = onSelectCandidate,
-            modifier = Modifier.weight(1f),
-        )
 
         FilledPillButton(
             text = if (uiState.isSaving) "저장 중…" else "확정하고 저장",
@@ -236,6 +258,100 @@ private fun CandidateRow(candidate: PlaceCandidate, selected: Boolean, onClick: 
     }
 }
 
+@Composable
+private fun MultiResultsArea(
+    groups: List<MultiCandidateGroup>,
+    onToggleChecked: (Int) -> Unit,
+    onToggleExpanded: (Int) -> Unit,
+    onSelectCandidate: (Int, PlaceCandidate) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (groups.isEmpty()) {
+        Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text("추출된 가게가 없어요", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(groups, key = { it.extractionIndex }) { group ->
+            MultiCandidateGroupCard(
+                group = group,
+                onToggleChecked = { onToggleChecked(group.extractionIndex) },
+                onToggleExpanded = { onToggleExpanded(group.extractionIndex) },
+                onSelectCandidate = { candidate -> onSelectCandidate(group.extractionIndex, candidate) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun MultiCandidateGroupCard(
+    group: MultiCandidateGroup,
+    onToggleChecked: () -> Unit,
+    onToggleExpanded: () -> Unit,
+    onSelectCandidate: (PlaceCandidate) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(EonjeColors.surface),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = group.candidates.isNotEmpty(), onClick = onToggleChecked)
+                .padding(14.dp, 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(if (group.checked) EonjeColors.accent else EonjeColors.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (group.checked) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = EonjeColors.onAccent, modifier = Modifier.size(14.dp))
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(group.extractedName, style = Typography.titleMedium, color = EonjeColors.textPrimary)
+                Text(
+                    group.selected?.let { "${it.name} · ${it.address}" } ?: "검색 결과가 없어요",
+                    style = Typography.bodySmall,
+                    color = EonjeColors.textMuted,
+                )
+            }
+            if (group.candidates.size > 1) {
+                IconButton(onClick = onToggleExpanded) {
+                    Icon(Icons.Filled.ExpandMore, contentDescription = "후보 더보기", tint = EonjeColors.iconMuted)
+                }
+            }
+        }
+
+        if (group.expanded) {
+            Column(
+                modifier = Modifier.padding(14.dp, 0.dp, 14.dp, 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                group.candidates.forEach { candidate ->
+                    CandidateRow(
+                        candidate = candidate,
+                        selected = group.selected?.kakaoPlaceId == candidate.kakaoPlaceId,
+                        onClick = { onSelectCandidate(candidate) },
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true, backgroundColor = 0xFF121316)
 @Composable
 private fun ResolveScreenPreview() {
@@ -255,6 +371,51 @@ private fun ResolveScreenPreview() {
             onSelectCandidate = {},
             onOpenOriginal = {},
             onConfirm = {},
+            onToggleGroupChecked = {},
+            onToggleGroupExpanded = {},
+            onSelectMultiCandidate = { _, _ -> },
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF121316)
+@Composable
+private fun ResolveScreenMultiPreview() {
+    EonjeTheme {
+        ResolveContent(
+            uiState = ResolveUiState(
+                subtitle = "3일 전 저장",
+                isMultiMode = true,
+                multiGroups = listOf(
+                    MultiCandidateGroup(
+                        extractionIndex = 0,
+                        extractedName = "소하염",
+                        candidates = listOf(
+                            PlaceCandidate("1", "소하염", "서울 성동구 연무장길 45", "한식", 37.544, 127.055),
+                        ),
+                        selected = PlaceCandidate("1", "소하염", "서울 성동구 연무장길 45", "한식", 37.544, 127.055),
+                        checked = true,
+                    ),
+                    MultiCandidateGroup(
+                        extractionIndex = 1,
+                        extractedName = "대림창고",
+                        candidates = listOf(
+                            PlaceCandidate("2", "대림창고", "서울 성동구 성수이로 78", "카페", 37.545, 127.056),
+                            PlaceCandidate("3", "대림창고 카페", "서울 성동구 아차산로", "카페", 37.546, 127.057),
+                        ),
+                        selected = PlaceCandidate("2", "대림창고", "서울 성동구 성수이로 78", "카페", 37.545, 127.056),
+                        checked = true,
+                    ),
+                ),
+            ),
+            onNavigateBack = {},
+            onQueryChange = {},
+            onSelectCandidate = {},
+            onOpenOriginal = {},
+            onConfirm = {},
+            onToggleGroupChecked = {},
+            onToggleGroupExpanded = {},
+            onSelectMultiCandidate = { _, _ -> },
         )
     }
 }

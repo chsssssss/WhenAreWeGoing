@@ -4,12 +4,15 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.github.chsssssss.eonje.data.local.CachedMediaDao
 import com.github.chsssssss.eonje.data.local.EonjeDatabase
+import com.github.chsssssss.eonje.data.local.ExtractedCandidateDao
 import com.github.chsssssss.eonje.data.local.PlaceDao
 import com.github.chsssssss.eonje.data.local.PlaceTagCrossRefDao
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRefDao
 import com.github.chsssssss.eonje.data.local.SavedPostDao
 import com.github.chsssssss.eonje.data.local.TagDao
+import com.github.chsssssss.eonje.data.local.WatchedAccountDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -62,4 +65,16 @@ object DatabaseModule {
     @Provides
     fun providePlaceTagCrossRefDao(database: EonjeDatabase): PlaceTagCrossRefDao =
         database.placeTagCrossRefDao()
+
+    @Provides
+    fun provideWatchedAccountDao(database: EonjeDatabase): WatchedAccountDao =
+        database.watchedAccountDao()
+
+    @Provides
+    fun provideCachedMediaDao(database: EonjeDatabase): CachedMediaDao =
+        database.cachedMediaDao()
+
+    @Provides
+    fun provideExtractedCandidateDao(database: EonjeDatabase): ExtractedCandidateDao =
+        database.extractedCandidateDao()
 }
