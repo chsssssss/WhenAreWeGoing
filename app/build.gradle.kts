@@ -52,10 +52,22 @@ android {
             "IG_ACCESS_TOKEN",
             "\"${localProperties.getProperty("IG_ACCESS_TOKEN", "")}\""
         )
+        // Firebase AI Logic(Gemini 클라우드 폴백)용 — google-services.json 없이 FirebaseOptions로 직접 초기화한다.
+        // Firebase 프로젝트 설정 전에는 비워둬도 빌드는 되고, 캡션 파싱은 온디바이스(ML Kit GenAI)만 시도한다.
         buildConfigField(
             "String",
-            "ANTHROPIC_API_KEY",
-            "\"${localProperties.getProperty("ANTHROPIC_API_KEY", "")}\""
+            "FIREBASE_PROJECT_ID",
+            "\"${localProperties.getProperty("FIREBASE_PROJECT_ID", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_APPLICATION_ID",
+            "\"${localProperties.getProperty("FIREBASE_APPLICATION_ID", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_API_KEY",
+            "\"${localProperties.getProperty("FIREBASE_API_KEY", "")}\""
         )
     }
 
@@ -97,6 +109,10 @@ dependencies {
     implementation(libs.kakao.maps)
     implementation(libs.coil.compose)
     implementation(libs.androidx.glance.appwidget)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.ai)
+    implementation(libs.mlkit.genai.prompt)
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)

@@ -22,6 +22,8 @@ kakaoMaps = "2.15.2"
 workManager = "2.10.0"
 coil = "2.7.0"
 glance = "1.1.1"
+firebaseBom = "34.18.0"
+mlkitGenaiPrompt = "1.0.0-beta4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -58,6 +60,9 @@ androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref 
 androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "hiltNavigationCompose" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-ai = { group = "com.google.firebase", name = "firebase-ai" }
+mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", version.ref = "mlkitGenaiPrompt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

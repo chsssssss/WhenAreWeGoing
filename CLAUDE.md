@@ -34,7 +34,7 @@
 | 이미지 | Coil |
 | 백엔드 | 없음. 모든 API는 클라이언트에서 직접 호출 (아래 "비용·서버 구조" 참고) |
 
-*캡션 파싱은 현재 실제 코드에서 Anthropic Claude API로 구현돼 있다. Firebase AI Logic/ML Kit GenAI로의 교체는 아직 진행 전 — 개발 단계 체크리스트 참고.*
+*캡션 파싱은 ML Kit GenAI(온디바이스)/Firebase AI Logic(클라우드 폴백) 코드로 교체 완료. 다만 Firebase 프로젝트를 아직 만들지 않아서, 실제 기기에서는 온디바이스 지원 여부에 따라 동작이 갈린다 — 개발 단계 체크리스트 참고.*
 
 ## 패키지 구조
 
@@ -189,7 +189,7 @@ data class PlaceTagCrossRef(
 
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
 
-*3단계 참고: 위 1~2, 5~7번(캐시 조회, 카카오 검색, 상태 결정 로직)은 실제로 구현·동작 중이다. 3번의 파싱 소스만 아직 Anthropic Claude API이고, 온디바이스/Firebase AI Logic 이원화는 진행 전이다.*
+*3단계 참고: 위 1~7번 전부 코드로 구현돼 있다. 다만 Firebase 프로젝트를 아직 안 만들어서, 실제 기기에서는 온디바이스(ML Kit GenAI)가 지원되는 기기에서만 3번이 동작하고 — 미지원 기기나 이미지 포함 2차 파싱은 Firebase 프로젝트가 생길 때까지 UNRESOLVED로 빠진다. 설계 원칙 1(저장은 항상 성공)엔 영향 없다.*
 
 ### F3. 계정 등록 및 동기화
 
@@ -245,7 +245,7 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 
 **무료 티어를 넘어서면** — Gemini 무료 티어 일일 한도(1500건)를 앱 전체 사용량이 넘으면 그 시점에 Firebase 프로젝트를 유료(Blaze) 플랜으로 전환하고 사용량만큼만 과금되는 구조로 넘어간다. 지금 규모에서는 해당 사항이 아니며, 이 한도에 근접하는지는 출시 후 모니터링으로 판단한다.
 
-**Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외. *(현재 코드는 과도기라 Anthropic Claude API로 구현돼 있다 — 아래 개발 단계 참고)*
+**Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외. (과거엔 Claude Haiku로 구현했었으나 이 원칙에 따라 걷어내고 온디바이스/Firebase AI Logic으로 교체했다.)
 
 ## 개발 단계
 
@@ -272,12 +272,13 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
 - [x] AccountsScreen — 계정 등록 (+ ResolveScreen 지름길 버튼)
 - [x] Business Discovery 동기화 WorkManager
-- [x] 캡션 파싱 WorkManager 골격 — 캐시 조회 → 파싱 → 카카오 로컬 검색 → 상태 결정 (현재 파싱은 Anthropic Claude API)
+- [x] 캡션 파싱 WorkManager 골격 — 캐시 조회 → 파싱 → 카카오 로컬 검색 → 상태 결정
 - [x] ResolveScreen 다중 모드
-- [ ] Firebase 프로젝트 설정 (Spark 무료 플랜) + Firebase AI Logic SDK 연동
-- [ ] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리
-- [ ] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체
-- [ ] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정
+- [x] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리 — `FeatureStatus.AVAILABLE` 확인 후 시도, 안 되면 조용히 폴백
+- [x] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체 — `CaptionParsingRepositoryImpl` 재작성 완료
+- [x] Firebase AI Logic SDK 연동(코드) — `google-services.json` 없이 `FirebaseOptions`로 직접 초기화, 프로젝트 없어도 컴파일되고 캡션 파싱은 온디바이스만 동작
+- [ ] Firebase 프로젝트 생성(Spark 무료 플랜) — `local.properties`에 `FIREBASE_PROJECT_ID`/`FIREBASE_APPLICATION_ID`/`FIREBASE_API_KEY` 채워 넣기. 콘솔 작업이라 코드로 대신할 수 없음
+- [ ] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정 — 콘솔 작업이라 코드로 대신할 수 없음
 
 ### 3.5단계 — 이미지 파싱 (보류)
 
