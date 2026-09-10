@@ -17,8 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -30,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -51,6 +54,7 @@ fun HomeScreen(
         onToggleView = viewModel::toggleView,
         onPlaceClick = onPlaceClick,
         onSelectTag = viewModel::onSelectTag,
+        onSearchQueryChange = viewModel::onSearchQueryChange,
         modifier = modifier,
     )
 }
@@ -61,6 +65,7 @@ private fun HomeContent(
     onToggleView: () -> Unit,
     onPlaceClick: (String) -> Unit,
     onSelectTag: (String?) -> Unit,
+    onSearchQueryChange: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -76,7 +81,11 @@ private fun HomeContent(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            PlaceList(places = uiState.places, onPlaceClick = onPlaceClick)
+            PlaceList(
+                places = uiState.places,
+                isSearching = uiState.searchQuery.isNotBlank(),
+                onPlaceClick = onPlaceClick,
+            )
         }
 
         Column(
@@ -86,7 +95,7 @@ private fun HomeContent(
                 .padding(20.dp, 16.dp, 20.dp, 0.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SearchBar()
+            SearchBar(query = uiState.searchQuery, onQueryChange = onSearchQueryChange)
             FilterChipsRow(
                 totalCount = uiState.totalCount,
                 tags = uiState.tags,
@@ -118,7 +127,7 @@ private fun HomeContent(
 }
 
 @Composable
-private fun SearchBar() {
+private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -130,7 +139,29 @@ private fun SearchBar() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(Icons.Filled.Search, contentDescription = null, tint = EonjeColors.textMuted, modifier = Modifier.size(20.dp))
-        Text("가게 · 태그 검색", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+        Box(modifier = Modifier.weight(1f)) {
+            if (query.isEmpty()) {
+                Text("가게 · 태그 검색", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = Typography.bodyMedium.copy(color = EonjeColors.textPrimary),
+                cursorBrush = SolidColor(EonjeColors.accent),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (query.isNotEmpty()) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "검색어 지우기",
+                tint = EonjeColors.textMuted,
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable { onQueryChange("") },
+            )
+        }
     }
 }
 
@@ -258,13 +289,17 @@ private fun PeekCard(place: HomePlace, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PlaceList(places: List<HomePlace>, onPlaceClick: (String) -> Unit) {
+private fun PlaceList(places: List<HomePlace>, isSearching: Boolean, onPlaceClick: (String) -> Unit) {
     if (places.isEmpty()) {
         Box(
             modifier = Modifier.fillMaxSize().padding(top = 120.dp),
             contentAlignment = Alignment.TopCenter,
         ) {
-            Text("저장된 장소가 없어요", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+            Text(
+                if (isSearching) "검색 결과가 없어요" else "저장된 장소가 없어요",
+                style = Typography.bodyMedium,
+                color = EonjeColors.textMuted,
+            )
         }
         return
     }

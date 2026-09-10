@@ -29,6 +29,7 @@ class HomeViewModel @Inject constructor(
 
     private val isMapView = MutableStateFlow(true)
     private val selectedTagId = MutableStateFlow<String?>(null)
+    private val searchQuery = MutableStateFlow("")
 
     private val filteredSelection: Flow<Pair<String?, Set<String>?>> = selectedTagId.flatMapLatest { tagId ->
         if (tagId == null) {
@@ -38,15 +39,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private val filters: Flow<HomeFilters> = combine(filteredSelection, searchQuery) { selection, query ->
+        HomeFilters(selectedTagId = selection.first, allowedPlaceIds = selection.second, query = query)
+    }
+
     val uiState: StateFlow<HomeUiState> = combine(
         savedPostRepository.observeUnresolved(),
         placeRepository.observeAll(),
         tagRepository.observeAll(),
-        filteredSelection,
+        filters,
         isMapView,
-    ) { pendingPosts, places, tags, selection, mapView ->
-        val (selTagId, allowedIds) = selection
-        val visiblePlaces = if (allowedIds == null) places else places.filter { it.id in allowedIds }
+    ) { pendingPosts, places, tags, filters, mapView ->
+        val tagFiltered = if (filters.allowedPlaceIds == null) places else places.filter { it.id in filters.allowedPlaceIds }
+        val query = filters.query.trim()
+        val visiblePlaces = if (query.isEmpty()) {
+            tagFiltered
+        } else {
+            tagFiltered.filter { place ->
+                place.name.orEmpty().contains(query, ignoreCase = true) ||
+                    place.category.orEmpty().contains(query, ignoreCase = true) ||
+                    place.address.orEmpty().contains(query, ignoreCase = true)
+            }
+        }
         HomeUiState(
             isMapView = mapView,
             pendingCount = pendingPosts.size,
@@ -57,7 +71,8 @@ class HomeViewModel @Inject constructor(
             },
             totalCount = places.size,
             tags = tags,
-            selectedTagId = selTagId,
+            selectedTagId = filters.selectedTagId,
+            searchQuery = filters.query,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -72,7 +87,17 @@ class HomeViewModel @Inject constructor(
     fun onSelectTag(tagId: String?) {
         selectedTagId.value = tagId
     }
+
+    fun onSearchQueryChange(query: String) {
+        searchQuery.value = query
+    }
 }
+
+private data class HomeFilters(
+    val selectedTagId: String?,
+    val allowedPlaceIds: Set<String>?,
+    val query: String,
+)
 
 private fun PlaceEntity.toHomePlace(thumbnailUrl: String?) = HomePlace(
     id = id,

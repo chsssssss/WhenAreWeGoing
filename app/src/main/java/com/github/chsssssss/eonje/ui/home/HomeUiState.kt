@@ -19,6 +19,7 @@ data class HomeUiState(
     val totalCount: Int = 0,
     val tags: List<TagEntity> = emptyList(),
     val selectedTagId: String? = null,
+    val searchQuery: String = "",
 ) {
     val highlighted: HomePlace? get() = places.firstOrNull()
 }
