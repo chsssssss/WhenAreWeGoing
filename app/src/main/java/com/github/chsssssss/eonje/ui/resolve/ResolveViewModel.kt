@@ -9,10 +9,14 @@ import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.repository.CachedMediaRepository
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
+import com.github.chsssssss.eonje.domain.usecase.RegisterAccountResult
+import com.github.chsssssss.eonje.domain.usecase.RegisterAccountUseCase
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
 import com.github.chsssssss.eonje.widget.InboxWidget
@@ -44,6 +48,9 @@ class ResolveViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val extractedCandidateRepository: ExtractedCandidateRepository,
+    private val cachedMediaRepository: CachedMediaRepository,
+    private val watchedAccountRepository: WatchedAccountRepository,
+    private val registerAccountUseCase: RegisterAccountUseCase,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -61,6 +68,11 @@ class ResolveViewModel @Inject constructor(
         viewModelScope.launch {
             val post = savedPostRepository.findById(postId)
             val isMulti = post?.status == ResolveStatus.NEEDS_REVIEW
+            // 캐시가 있다는 건 이 게시물이 이미 등록된 계정에서 왔다는 뜻이다(캐시는 등록된 계정만 채워진다).
+            val registeredUsername = post?.shortcode
+                ?.let { cachedMediaRepository.findByShortcode(it) }
+                ?.username
+                ?.takeIf { watchedAccountRepository.findByUsername(it) != null }
             _uiState.update {
                 it.copy(
                     instagramUrl = post?.instagramUrl.orEmpty(),
@@ -68,6 +80,7 @@ class ResolveViewModel @Inject constructor(
                     subtitle = post?.let { p -> RelativeTimeFormatter.format(p.createdAt) + " 저장" }.orEmpty(),
                     isLoadingPost = false,
                     isMultiMode = isMulti,
+                    registeredAccountUsername = registeredUsername,
                 )
             }
             if (isMulti) {
@@ -137,6 +150,45 @@ class ResolveViewModel @Inject constructor(
 
     fun onOpenOriginal() {
         _events.trySend(ResolveEvent.Toast("원본 링크는 아직 열 수 없어요"))
+    }
+
+    fun onRegisterAccountClick() {
+        _uiState.update { it.copy(isRegisterAccountSheetVisible = true, registerAccountUsernameInput = "") }
+    }
+
+    fun onDismissRegisterAccountSheet() {
+        if (_uiState.value.isRegisteringAccount) return
+        _uiState.update { it.copy(isRegisterAccountSheetVisible = false) }
+    }
+
+    fun onRegisterAccountUsernameChange(value: String) {
+        _uiState.update { it.copy(registerAccountUsernameInput = value) }
+    }
+
+    fun onConfirmRegisterAccount() {
+        val state = _uiState.value
+        val username = state.registerAccountUsernameInput
+        if (username.isBlank() || state.isRegisteringAccount) return
+
+        _uiState.update { it.copy(isRegisteringAccount = true) }
+        viewModelScope.launch {
+            when (val result = registerAccountUseCase(username)) {
+                is RegisterAccountResult.Registered -> {
+                    _uiState.update {
+                        it.copy(
+                            isRegisteringAccount = false,
+                            isRegisterAccountSheetVisible = false,
+                            registeredAccountUsername = username.removePrefix("@").trim(),
+                        )
+                    }
+                    _events.send(ResolveEvent.Toast("계정이 등록됐어요"))
+                }
+                is RegisterAccountResult.Failed -> {
+                    _uiState.update { it.copy(isRegisteringAccount = false) }
+                    _events.send(ResolveEvent.Toast(result.message))
+                }
+            }
+        }
     }
 
     fun onToggleGroupChecked(extractionIndex: Int) {

@@ -246,6 +246,7 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] Business Discovery 동기화 WorkManager
 - [x] 캡션 파싱 WorkManager (LLM + 카카오 로컬)
 - [x] ResolveScreen 다중 모드
+- [x] ResolveScreen 계정 등록 지름길 — 정리 화면 하단에서 바로 계정 등록 (username은 인스타 원본을 보고 직접 입력)
 
 ### 3.5단계 — 이미지 파싱 (보류)
 

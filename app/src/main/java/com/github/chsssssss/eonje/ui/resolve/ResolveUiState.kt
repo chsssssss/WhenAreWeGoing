@@ -27,4 +27,9 @@ data class ResolveUiState(
     // 다중 모드: 추출된 항목별 후보 + 체크박스
     val multiGroups: List<MultiCandidateGroup> = emptyList(),
     val isSaving: Boolean = false,
+    // 계정 등록 지름길: 캐시로 이미 계정을 알 수 있고 등록까지 돼 있으면 username이 채워진다.
+    val registeredAccountUsername: String? = null,
+    val isRegisterAccountSheetVisible: Boolean = false,
+    val registerAccountUsernameInput: String = "",
+    val isRegisteringAccount: Boolean = false,
 )
