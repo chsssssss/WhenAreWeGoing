@@ -50,7 +50,11 @@ class HomeViewModel @Inject constructor(
         HomeUiState(
             isMapView = mapView,
             pendingCount = pendingPosts.size,
-            places = visiblePlaces.map { it.toHomePlace() },
+            places = visiblePlaces.map { place ->
+                val postIds = placeRepository.postIdsForPlace(place.id)
+                val thumbnailUrl = savedPostRepository.findByIds(postIds).firstNotNullOfOrNull { it.thumbnailUrl }
+                place.toHomePlace(thumbnailUrl)
+            },
             totalCount = places.size,
             tags = tags,
             selectedTagId = selTagId,
@@ -70,11 +74,12 @@ class HomeViewModel @Inject constructor(
     }
 }
 
-private fun PlaceEntity.toHomePlace() = HomePlace(
+private fun PlaceEntity.toHomePlace(thumbnailUrl: String?) = HomePlace(
     id = id,
     name = name ?: "이름 없는 장소",
     category = category.orEmpty(),
     address = address.orEmpty(),
     latitude = latitude,
     longitude = longitude,
+    thumbnailUrl = thumbnailUrl,
 )

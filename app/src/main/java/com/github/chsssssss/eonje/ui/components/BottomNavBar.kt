@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.Typography
@@ -97,7 +98,7 @@ private fun NavTabItem(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Box {
+            Box(modifier = Modifier.size(20.dp)) {
                 Icon(
                     imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
                     contentDescription = tab.label,
@@ -108,7 +109,7 @@ private fun NavTabItem(
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(start = 14.dp, bottom = 14.dp)
+                            .offset(x = 6.dp, y = (-6).dp)
                             .size(16.dp)
                             .background(EonjeColors.accent, CircleShape),
                         contentAlignment = Alignment.Center,

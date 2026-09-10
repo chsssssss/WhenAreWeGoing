@@ -234,7 +234,7 @@ private fun PeekCard(place: HomePlace, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlaceholderImage(modifier = Modifier.size(64.dp), cornerRadius = 14.dp)
+        PlaceholderImage(modifier = Modifier.size(64.dp), imageUrl = place.thumbnailUrl, cornerRadius = 14.dp)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(place.name, style = Typography.titleMedium, color = EonjeColors.textPrimary)
             if (place.category.isNotBlank() || place.address.isNotBlank()) {
@@ -272,7 +272,7 @@ private fun PlaceList(places: List<HomePlace>, onPlaceClick: (String) -> Unit) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 196.dp, bottom = 168.dp)
+            .padding(top = 196.dp, bottom = 90.dp)
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -284,7 +284,7 @@ private fun PlaceList(places: List<HomePlace>, onPlaceClick: (String) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PlaceholderImage(modifier = Modifier.size(76.dp), cornerRadius = 14.dp)
+                PlaceholderImage(modifier = Modifier.size(76.dp), imageUrl = place.thumbnailUrl, cornerRadius = 14.dp)
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(place.name, style = Typography.titleMedium, color = EonjeColors.textPrimary)
                     if (place.category.isNotBlank() || place.address.isNotBlank()) {

@@ -9,6 +9,7 @@ data class HomePlace(
     val address: String,
     val latitude: Double?,
     val longitude: Double?,
+    val thumbnailUrl: String? = null,
 )
 
 data class HomeUiState(
