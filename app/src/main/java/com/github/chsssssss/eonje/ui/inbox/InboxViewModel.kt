@@ -30,11 +30,13 @@ class InboxViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val showCleanupDialog = MutableStateFlow(false)
+    private val pendingDeleteId = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<InboxUiState> = combine(
         repository.observeUnresolved(),
         showCleanupDialog,
-    ) { posts, showDialog ->
+        pendingDeleteId,
+    ) { posts, showDialog, deleteId ->
         val staleThreshold = System.currentTimeMillis() - STALE_THRESHOLD_MILLIS
         InboxUiState(
             items = posts.map { it.toInboxItem() },
@@ -44,6 +46,7 @@ class InboxViewModel @Inject constructor(
             showUnregisteredAccountBanner = posts.any { it.status == ResolveStatus.UNRESOLVED },
             staleItemIds = posts.filter { it.createdAt < staleThreshold }.map { it.id },
             showCleanupDialog = showDialog,
+            pendingDeleteId = deleteId,
         )
     }
         .stateIn(
@@ -66,6 +69,23 @@ class InboxViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteByIds(staleIds)
             showCleanupDialog.update { false }
+            InboxWidget().updateAll(context)
+        }
+    }
+
+    fun onDeleteRequested(postId: String) {
+        pendingDeleteId.update { postId }
+    }
+
+    fun onCancelDelete() {
+        pendingDeleteId.update { null }
+    }
+
+    fun onConfirmDelete() {
+        val postId = pendingDeleteId.value ?: return
+        viewModelScope.launch {
+            repository.deleteByIds(listOf(postId))
+            pendingDeleteId.update { null }
             InboxWidget().updateAll(context)
         }
     }

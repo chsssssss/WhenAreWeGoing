@@ -6,6 +6,7 @@ data class InboxUiState(
     val showUnregisteredAccountBanner: Boolean = false,
     val staleItemIds: List<String> = emptyList(),
     val showCleanupDialog: Boolean = false,
+    val pendingDeleteId: String? = null,
 )
 
 data class InboxItem(

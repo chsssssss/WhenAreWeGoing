@@ -19,11 +19,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,10 +59,14 @@ fun InboxScreen(
         onCleanupStaleClick = viewModel::onCleanupStaleClick,
         onConfirmCleanup = viewModel::onConfirmCleanup,
         onDismissCleanupDialog = viewModel::onDismissCleanupDialog,
+        onDeleteRequested = viewModel::onDeleteRequested,
+        onConfirmDelete = viewModel::onConfirmDelete,
+        onCancelDelete = viewModel::onCancelDelete,
         modifier = modifier,
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InboxContent(
     uiState: InboxUiState,
@@ -66,6 +75,9 @@ private fun InboxContent(
     onCleanupStaleClick: () -> Unit,
     onConfirmCleanup: () -> Unit,
     onDismissCleanupDialog: () -> Unit,
+    onDeleteRequested: (String) -> Unit,
+    onConfirmDelete: () -> Unit,
+    onCancelDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -106,6 +118,10 @@ private fun InboxContent(
             )
         }
 
+        if (uiState.pendingDeleteId != null) {
+            DeleteConfirmDialog(onConfirm = onConfirmDelete, onDismiss = onCancelDelete)
+        }
+
         if (uiState.items.isEmpty()) {
             EmptyInbox(modifier = Modifier.weight(1f))
         } else {
@@ -116,7 +132,11 @@ private fun InboxContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(uiState.items, key = { it.id }) { item ->
-                    InboxCard(item = item, onClick = { onItemClick(item.id) })
+                    SwipeableInboxCard(
+                        item = item,
+                        onClick = { onItemClick(item.id) },
+                        onSwipeToDelete = { onDeleteRequested(item.id) },
+                    )
                 }
             }
 
@@ -188,6 +208,53 @@ private fun CleanupConfirmDialog(count: Int, onConfirm: () -> Unit, onDismiss: (
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableInboxCard(item: InboxItem, onClick: () -> Unit, onSwipeToDelete: () -> Unit) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value != SwipeToDismissBoxValue.Settled) {
+                onSwipeToDelete()
+            }
+            // 실제로 밀어서 없애지 않고 항상 제자리로 되돌린다 — 삭제는 확인 다이얼로그를 거친 뒤에만 일어난다.
+            false
+        },
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(EonjeColors.danger)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(Icons.Filled.Delete, contentDescription = "삭제", tint = EonjeColors.textPrimary)
+            }
+        },
+    ) {
+        InboxCard(item = item, onClick = onClick)
+    }
+}
+
+@Composable
+private fun DeleteConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("게시물 삭제") },
+        text = { Text("이 게시물을 삭제할까요? 저장된 링크와 인식 결과가 사라져요.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("삭제") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        },
+    )
+}
+
 @Composable
 private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
     Row(
@@ -250,6 +317,9 @@ private fun InboxScreenPreview() {
             onCleanupStaleClick = {},
             onConfirmCleanup = {},
             onDismissCleanupDialog = {},
+            onDeleteRequested = {},
+            onConfirmDelete = {},
+            onCancelDelete = {},
         )
     }
 }
@@ -265,6 +335,9 @@ private fun InboxScreenEmptyPreview() {
             onCleanupStaleClick = {},
             onConfirmCleanup = {},
             onDismissCleanupDialog = {},
+            onDeleteRequested = {},
+            onConfirmDelete = {},
+            onCancelDelete = {},
         )
     }
 }

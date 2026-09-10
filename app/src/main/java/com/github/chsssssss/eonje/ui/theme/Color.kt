@@ -20,6 +20,7 @@ object EonjeColors {
 
     val success = Color(0xFF8FBF9F)
     val warning = Color(0xFFD9A03C)
+    val danger = Color(0xFFD9615A)
     val progressTrack = Color(0xFF2A2D33)
 
     val navBackground = Color(0xFF181A1E)
