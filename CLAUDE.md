@@ -1,16 +1,17 @@
 # 언제가지 (WhenAreWeGoing)
 
-인스타그램에서 본 맛집을 저장하고 나중에 꺼내 쓰는 개인용 안드로이드 앱.
+인스타그램에서 본 맛집을 저장하고 나중에 꺼내 쓰는 안드로이드 앱. 플레이스토어 공개 출시 예정.
 
 ## 앱 개요
 
 - **핵심 흐름**: 인스타에서 공유 버튼 → URL만 즉시 저장(화면 없음) → 나중에 앱에서 가게 확정 → 외식할 때 지도에서 꺼내 봄
 - **설계 원칙 1**: 저장은 절대 실패하지 않는다. 가게 이름을 못 찾아도, 네트워크가 끊겨도 URL은 저장된다
 - **설계 원칙 2**: 자동 인식(캡션 파싱)은 최적화이지 필수 기능이 아니다. 실패해도 앱은 정상 동작한다
+- **설계 원칙 3**: 서버 없이, 사용자가 늘어도 개발자 비용이 비례해서 늘지 않는 구조로 간다. 캡션 파싱은 Firebase AI Logic(Gemini 무료 티어)과 온디바이스 Gemini Nano를 쓰고, 지도 검색은 클라이언트에서 직접 호출한다
 
 ## 프로젝트 정보
 
-- **패키지명**: com.github.chsssssss.eonje
+- **패키지명**: com.hsc.eonje *(마이그레이션 예정 — 실제 코드는 아직 com.github.chsssssss.eonje. 아래 개발 단계 체크리스트 참고)*
 - **GitHub**: chsssssss/WhenAreWeGoing
 - **Minimum SDK**: API 26 (Android 8.0)
 - **언어**: Kotlin
@@ -24,21 +25,25 @@
 | 아키텍처 | MVVM + UDF, StateFlow 기반 단일 UiState |
 | DI | Hilt |
 | 로컬 DB | Room |
-| 네트워크 | Retrofit + OkHttp + kotlinx.serialization |
+| 네트워크 | Retrofit + OkHttp + kotlinx.serialization (Instagram, 카카오 로컬) |
+| 캡션 파싱 (AI) | Firebase AI Logic (Gemini 2.0 Flash 무료 티어) 우선, 지원 기기는 ML Kit GenAI(Gemini Nano) 온디바이스 우선 시도 |
 | 비동기 | Coroutines + Flow |
 | 백그라운드 | WorkManager |
 | 지도 | 카카오맵 SDK (카카오 로컬 API와 좌표계 통일) |
 | 네비게이션 | Navigation Compose |
 | 이미지 | Coil |
+| 백엔드 | 없음. 모든 API는 클라이언트에서 직접 호출 (아래 "비용·서버 구조" 참고) |
+
+*캡션 파싱은 현재 실제 코드에서 Anthropic Claude API로 구현돼 있다. Firebase AI Logic/ML Kit GenAI로의 교체는 아직 진행 전 — 개발 단계 체크리스트 참고.*
 
 ## 패키지 구조
 
 ```
-com.github.chsssssss.eonje/
+com.hsc.eonje/
 ├─ di/                 Hilt 모듈
 ├─ data/
 │  ├─ local/           Room (Entity, Dao, Database)
-│  ├─ remote/          Retrofit (Instagram, Kakao, LLM)
+│  ├─ remote/          Retrofit (Instagram, Kakao) + Firebase AI Logic / ML Kit GenAI 클라이언트
 │  ├─ repository/      Repository 구현체
 │  └─ worker/          WorkManager
 ├─ domain/
@@ -169,9 +174,12 @@ data class PlaceTagCrossRef(
 
 1. shortcode → 로컬 캐시(CachedMedia) 조회
 2. 미스 → UNRESOLVED 종료
-3. 1차 파싱: 캡션 텍스트만 LLM 전달, `[{상호명, 지역, 메뉴}]` 배열 응답
-4. 결과 없으면 2차 파싱: 캡션 + 이미지 함께 전달 (캐리셀 앞 3장)
-5. 각 항목 카카오 로컬 검색
+3. 캡션 파싱 시도 순서:
+   a. 기기가 ML Kit GenAI(Gemini Nano) 지원 시 온디바이스로 우선 시도 — 비용 0, 네트워크 불필요
+   b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini 2.0 Flash 호출 (무료 티어)
+   c. 두 경로 모두 `@Generable` 구조화 출력으로 `[{상호명, 지역, 메뉴}]` 배열 응답 받기
+4. 결과 없으면 2차 파싱: 캡션 + 이미지 함께 전달 (캐리셀 앞 3장). 이미지 입력은 온디바이스보다 Firebase AI Logic(Gemini) 경로가 안정적 — 비전은 클라우드 우선
+5. 각 항목 카카오 로컬 검색 (클라이언트에서 직접 호출, 앱 서명 기반 키 제한)
 6. 상태 결정:
    - 추출 1건 + 검색 1건 → 자동 확정 (RESOLVED)
    - 추출 2건 이상 → 무조건 NEEDS_REVIEW (다중 모드)
@@ -180,6 +188,8 @@ data class PlaceTagCrossRef(
 7. 확정 시 알림: "○○식당 저장됨"
 
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
+
+*3단계 참고: 위 1~2, 5~7번(캐시 조회, 카카오 검색, 상태 결정 로직)은 실제로 구현·동작 중이다. 3번의 파싱 소스만 아직 Anthropic Claude API이고, 온디바이스/Firebase AI Logic 이원화는 진행 전이다.*
 
 ### F3. 계정 등록 및 동기화
 
@@ -202,6 +212,8 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 필요 권한: instagram_basic, instagram_manage_insights, pages_read_engagement
 토큰: local.properties에 보관, BuildConfig로 주입. 절대 커밋 금지. 60일마다 갱신.
 
+**규모 확장 시 병목** — 조회당하는 계정(맛집 계정)만 프로페셔널이면 되고, 조회 주체는 개발자 본인 토큰 하나로 충분하다. 즉 사용자가 각자 인스타 로그인을 할 필요가 없다. 다만 이 토큰 하나에 시간당 호출 제한이 걸리므로, 사용자가 많아지면 전체 동기화가 이 한도에 묶인다. 비용 문제가 아니라 속도 문제이며, 이 기능이 막혀도 F1·F2는 정상 동작하므로 규모가 커지면 이 기능만 잠시 끄고 App Review(Advanced Access) 통과 후 다시 켜는 방식으로 대응한다.
+
 ## 예외 처리 원칙
 
 **F1은 항상 성공한다.** 실패는 F2 이후 단계에서만 발생한다.
@@ -218,6 +230,22 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 | 이미 저장된 가게 | kakaoPlaceId 일치 시 게시물만 연결 |
 | 네트워크 없음 | WorkManager 지수 백오프 재시도 |
 | 토큰 만료 | 앱 내 배너, 동기화 중단. 공유 수신은 정상 동작 |
+
+## 비용·서버 구조
+
+플레이스토어 공개 출시가 목표이지만, 사용자가 늘어도 개발자가 사용량 비례 비용을 지지 않는 구조로 설계한다. **서버를 두지 않는다.**
+
+| 기능 | 방식 | 비용 |
+|---|---|---|
+| 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini 2.0 Flash 무료 티어 호출 | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
+| 카카오 로컬 검색 | 클라이언트에서 REST API 직접 호출, 카카오 개발자 콘솔에서 앱 서명(SHA) 기반 키 제한 설정 | 카카오 무료 쿼터 내 |
+| Business Discovery | 개발자 본인 토큰으로 클라이언트가 직접 호출 (키는 앱에 두지 않고 필요 최소 범위로 관리 검토) | 무료. 단 속도 제한 있음 (위 참고) |
+
+**API 키를 앱에 직접 내장하지 않는 이유** — APK는 디컴파일 가능해서, 내장된 키는 노출되면 누구나 그 키로 무제한 요청을 보낼 수 있고 비용은 키 소유자에게 청구된다. Firebase AI Logic은 이 문제를 게이트웨이 구조로 해결해서, 서버를 직접 짜지 않아도 클라이언트에서 안전하게 Gemini를 호출할 수 있다. 카카오는 앱 서명 기반 키 제한으로 같은 문제를 완화한다.
+
+**무료 티어를 넘어서면** — Gemini 무료 티어 일일 한도(1500건)를 앱 전체 사용량이 넘으면 그 시점에 Firebase 프로젝트를 유료(Blaze) 플랜으로 전환하고 사용량만큼만 과금되는 구조로 넘어간다. 지금 규모에서는 해당 사항이 아니며, 이 한도에 근접하는지는 출시 후 모니터링으로 판단한다.
+
+**Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외. *(현재 코드는 과도기라 Anthropic Claude API로 구현돼 있다 — 아래 개발 단계 참고)*
 
 ## 개발 단계
 
@@ -239,20 +267,24 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] HomeScreen — 지도, 리스트 토글, 태그 필터
 - [x] PlaceDetailScreen
 
-### 3단계 — 자동 매칭 (App Review 병행) (완료)
+### 현재: 3단계 — 자동 매칭 (App Review 병행) + 공개 출시 준비
 
 - [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
-- [x] AccountsScreen — 계정 등록
+- [x] AccountsScreen — 계정 등록 (+ ResolveScreen 지름길 버튼)
 - [x] Business Discovery 동기화 WorkManager
-- [x] 캡션 파싱 WorkManager (LLM + 카카오 로컬)
+- [x] 캡션 파싱 WorkManager 골격 — 캐시 조회 → 파싱 → 카카오 로컬 검색 → 상태 결정 (현재 파싱은 Anthropic Claude API)
 - [x] ResolveScreen 다중 모드
-- [x] ResolveScreen 계정 등록 지름길 — 정리 화면 하단에서 바로 계정 등록 (username은 인스타 원본을 보고 직접 입력)
+- [ ] 패키지명 마이그레이션: `com.github.chsssssss.eonje` → `com.hsc.eonje` (공개 출시 전 필요)
+- [ ] Firebase 프로젝트 설정 (Spark 무료 플랜) + Firebase AI Logic SDK 연동
+- [ ] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리
+- [ ] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체
+- [ ] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정
 
 ### 3.5단계 — 이미지 파싱 (보류)
 
 캡션 파싱 적중률 실측 후 도입 여부 결정. 아직 실측 전이라 보류 중.
 
-### 현재: 4단계 — 다듬기
+### 4단계 — 다듬기 (완료)
 
 - [x] 위젯 — 인박스 정리 대기 개수를 보여주는 홈 화면 위젯
 - [x] 정리 알림 — 정리 안 된 게시물이 있으면 주기적으로(7일마다) 알림
