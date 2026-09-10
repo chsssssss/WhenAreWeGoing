@@ -196,7 +196,7 @@ data class PlaceTagCrossRef(
 - Business Discovery API 사용
 - username 입력 → 프로페셔널 계정 확인 → 등록
 - WorkManager: 1일 1회, NetworkType.UNMETERED + requiresCharging
-- 계정당 최근 50건 유지
+- 계정당 최근 10건 유지 — `media.limit(50)`은 캐러셀·비디오 하위 필드까지 한 번에 요청하면 Meta가 `"Please reduce the amount of data you're asking for"`(에러 코드 1)로 거부해서 10으로 낮춤
 - 등록 후 UNRESOLVED 게시물 중 해당 계정 것만 매칭 재시도
 
 ### Business Discovery 엔드포인트
@@ -204,7 +204,7 @@ data class PlaceTagCrossRef(
 ```
 GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
   ?fields=business_discovery.username({TARGET})
-          {media.limit(50){permalink,caption,timestamp,media_url,
+          {media.limit(10){permalink,caption,timestamp,media_url,
                            media_type,children{media_url,media_type}}}
   &access_token={TOKEN}
 ```
