@@ -11,7 +11,7 @@
 
 ## 프로젝트 정보
 
-- **패키지명**: com.hsc.eonje *(마이그레이션 예정 — 실제 코드는 아직 com.github.chsssssss.eonje. 아래 개발 단계 체크리스트 참고)*
+- **패키지명**: com.github.chsssssss.eonje
 - **GitHub**: chsssssss/WhenAreWeGoing
 - **Minimum SDK**: API 26 (Android 8.0)
 - **언어**: Kotlin
@@ -39,7 +39,7 @@
 ## 패키지 구조
 
 ```
-com.hsc.eonje/
+com.github.chsssssss.eonje/
 ├─ di/                 Hilt 모듈
 ├─ data/
 │  ├─ local/           Room (Entity, Dao, Database)
@@ -274,7 +274,6 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] Business Discovery 동기화 WorkManager
 - [x] 캡션 파싱 WorkManager 골격 — 캐시 조회 → 파싱 → 카카오 로컬 검색 → 상태 결정 (현재 파싱은 Anthropic Claude API)
 - [x] ResolveScreen 다중 모드
-- [ ] 패키지명 마이그레이션: `com.github.chsssssss.eonje` → `com.hsc.eonje` (공개 출시 전 필요)
 - [ ] Firebase 프로젝트 설정 (Spark 무료 플랜) + Firebase AI Logic SDK 연동
 - [ ] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리
 - [ ] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체
