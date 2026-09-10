@@ -1,29 +1,56 @@
 package com.github.chsssssss.eonje.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 
-private val EonjeDarkColorScheme = darkColorScheme(
-    primary = EonjeColors.accent,
-    onPrimary = EonjeColors.onAccent,
-    secondary = EonjeColors.accent,
-    onSecondary = EonjeColors.onAccent,
-    background = EonjeColors.background,
-    onBackground = EonjeColors.textPrimary,
-    surface = EonjeColors.surface,
-    onSurface = EonjeColors.textPrimary,
-    surfaceVariant = EonjeColors.surfaceVariant,
-    onSurfaceVariant = EonjeColors.textSecondary,
-    outline = EonjeColors.border,
-    error = EonjeColors.warning,
-)
+private fun colorSchemeFrom(palette: EonjePalette, dark: Boolean): ColorScheme {
+    return if (dark) {
+        darkColorScheme(
+            primary = palette.accent,
+            onPrimary = palette.onAccent,
+            secondary = palette.accent,
+            onSecondary = palette.onAccent,
+            background = palette.background,
+            onBackground = palette.textPrimary,
+            surface = palette.surface,
+            onSurface = palette.textPrimary,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = palette.textSecondary,
+            outline = palette.border,
+            error = palette.danger,
+        )
+    } else {
+        lightColorScheme(
+            primary = palette.accent,
+            onPrimary = palette.onAccent,
+            secondary = palette.accent,
+            onSecondary = palette.onAccent,
+            background = palette.background,
+            onBackground = palette.textPrimary,
+            surface = palette.surface,
+            onSurface = palette.textPrimary,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = palette.textSecondary,
+            outline = palette.border,
+            error = palette.danger,
+        )
+    }
+}
 
 @Composable
-fun EonjeTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = EonjeDarkColorScheme,
-        typography = Typography,
-        content = content
-    )
+fun EonjeTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    val palette = if (darkTheme) EonjeDarkPalette else EonjeLightPalette
+
+    CompositionLocalProvider(LocalEonjePalette provides palette) {
+        MaterialTheme(
+            colorScheme = colorSchemeFrom(palette, darkTheme),
+            typography = Typography,
+            content = content,
+        )
+    }
 }
