@@ -16,7 +16,7 @@ interface InstagramBusinessDiscoveryApi {
         fun fields(targetUsername: String) =
             "business_discovery.username($targetUsername)" +
                 "{id,username,profile_picture_url," +
-                "media.limit(10){permalink,caption,timestamp,media_url,media_type," +
+                "media.limit(25){permalink,caption,timestamp,media_url,media_type," +
                 "children{media_url,media_type}}}"
     }
 }
