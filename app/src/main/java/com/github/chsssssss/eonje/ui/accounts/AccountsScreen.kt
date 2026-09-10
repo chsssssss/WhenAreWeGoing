@@ -20,12 +20,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,6 +68,7 @@ fun AccountsScreen(
         onNavigateBack = onNavigateBack,
         onAddAccountClick = viewModel::onAddAccountClick,
         onRetrySync = viewModel::onRetrySync,
+        onDeleteRequested = viewModel::onDeleteRequested,
         modifier = modifier,
     )
 
@@ -80,6 +87,15 @@ fun AccountsScreen(
             )
         }
     }
+
+    val pendingDeleteUsername = uiState.pendingDeleteUsername
+    if (pendingDeleteUsername != null) {
+        DeleteAccountConfirmDialog(
+            username = pendingDeleteUsername,
+            onConfirm = viewModel::onConfirmDelete,
+            onDismiss = viewModel::onCancelDelete,
+        )
+    }
 }
 
 @Composable
@@ -88,6 +104,7 @@ private fun AccountsContent(
     onNavigateBack: () -> Unit,
     onAddAccountClick: () -> Unit,
     onRetrySync: (String) -> Unit,
+    onDeleteRequested: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize().background(EonjeColors.background)) {
@@ -129,7 +146,11 @@ private fun AccountsContent(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(uiState.accounts, key = { it.username }) { account ->
-                        AccountRow(account = account, onRetrySync = { onRetrySync(account.username) })
+                        SwipeableAccountRow(
+                            account = account,
+                            onRetrySync = { onRetrySync(account.username) },
+                            onSwipeToDelete = { onDeleteRequested(account.rawUsername) },
+                        )
                     }
                 }
             }
@@ -145,6 +166,53 @@ private fun AccountsContent(
                 .padding(20.dp, 16.dp, 20.dp, 28.dp),
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableAccountRow(account: AccountUiModel, onRetrySync: () -> Unit, onSwipeToDelete: () -> Unit) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value != SwipeToDismissBoxValue.Settled) {
+                onSwipeToDelete()
+            }
+            // 실제로 밀어서 없애지 않고 항상 제자리로 되돌린다 — 삭제는 확인 다이얼로그를 거친 뒤에만 일어난다.
+            false
+        },
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(EonjeColors.danger)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(Icons.Filled.Delete, contentDescription = "삭제", tint = EonjeColors.textPrimary)
+            }
+        },
+    ) {
+        AccountRow(account = account, onRetrySync = onRetrySync)
+    }
+}
+
+@Composable
+private fun DeleteAccountConfirmDialog(username: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("계정 삭제") },
+        text = { Text("@$username 계정을 삭제할까요? 더는 새 게시물을 자동으로 가져오지 않아요. 이미 저장된 게시물과 장소는 그대로 남아요.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("삭제") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        },
+    )
 }
 
 @Composable
@@ -187,6 +255,7 @@ private fun AccountsScreenPreview() {
             onNavigateBack = {},
             onAddAccountClick = {},
             onRetrySync = {},
+            onDeleteRequested = {},
         )
     }
 }

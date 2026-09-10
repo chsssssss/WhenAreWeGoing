@@ -32,6 +32,7 @@ class AccountsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val local = MutableStateFlow(LocalAddState())
+    private val pendingDeleteUsername = MutableStateFlow<String?>(null)
 
     private val _toastMessages = Channel<String>(Channel.BUFFERED)
     val toastMessages = _toastMessages.receiveAsFlow()
@@ -39,12 +40,14 @@ class AccountsViewModel @Inject constructor(
     val uiState: StateFlow<AccountsUiState> = combine(
         watchedAccountRepository.observeAll(),
         local,
-    ) { accounts, localState ->
+        pendingDeleteUsername,
+    ) { accounts, localState, deleteUsername ->
         AccountsUiState(
             accounts = accounts.map { it.toUiModel() },
             isAddSheetVisible = localState.isAddSheetVisible,
             usernameInput = localState.usernameInput,
             isRegistering = localState.isRegistering,
+            pendingDeleteUsername = deleteUsername,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -93,6 +96,23 @@ class AccountsViewModel @Inject constructor(
         }
     }
 
+    fun onDeleteRequested(username: String) {
+        pendingDeleteUsername.update { username }
+    }
+
+    fun onCancelDelete() {
+        pendingDeleteUsername.update { null }
+    }
+
+    fun onConfirmDelete() {
+        val username = pendingDeleteUsername.value ?: return
+        viewModelScope.launch {
+            watchedAccountRepository.delete(username)
+            pendingDeleteUsername.update { null }
+            _toastMessages.trySend("계정을 삭제했어요")
+        }
+    }
+
     private fun WatchedAccountEntity.toUiModel(): AccountUiModel {
         val statusText = when {
             lastSyncError != null -> "동기화 실패 · 다시 시도"
@@ -101,6 +121,7 @@ class AccountsViewModel @Inject constructor(
         }
         return AccountUiModel(
             username = "@$username",
+            rawUsername = username,
             statusText = statusText,
             isError = lastSyncError != null,
             profileImageUrl = profileImageUrl,
