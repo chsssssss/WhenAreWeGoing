@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -47,6 +48,32 @@ fun CandidateStatusChip(candidateCount: Int, modifier: Modifier = Modifier) {
             text = if (hasCandidates) "후보 ${candidateCount}곳" else "직접 찾기",
             style = Typography.labelSmall,
             color = if (hasCandidates) EonjeColors.accent else EonjeColors.textTertiary,
+        )
+    }
+}
+
+/** 인박스 카드 상태 표시 — WorkManager에서 캡션 파싱이 아직 안 끝난 게시물에 뜬다. */
+@Composable
+fun ProcessingStatusChip(modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(13.dp)
+    Row(
+        modifier = modifier
+            .height(26.dp)
+            .clip(shape)
+            .background(EonjeColors.surfaceVariant)
+            .padding(start = 9.dp, end = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(10.dp),
+            color = EonjeColors.textMuted,
+            strokeWidth = 1.5.dp,
+        )
+        Text(
+            text = "정리 중",
+            style = Typography.labelSmall,
+            color = EonjeColors.textMuted,
         )
     }
 }

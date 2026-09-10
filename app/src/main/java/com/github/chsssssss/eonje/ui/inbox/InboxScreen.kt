@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.github.chsssssss.eonje.ui.components.CandidateStatusChip
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
+import com.github.chsssssss.eonje.ui.components.ProcessingStatusChip
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
 import com.github.chsssssss.eonje.ui.theme.Typography
@@ -278,7 +279,11 @@ private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text(item.relativeTime, style = Typography.bodySmall, color = EonjeColors.textMuted)
-            CandidateStatusChip(candidateCount = item.extractedCount)
+            if (item.isProcessing) {
+                ProcessingStatusChip()
+            } else {
+                CandidateStatusChip(candidateCount = item.extractedCount)
+            }
         }
         Icon(
             imageVector = Icons.Filled.ChevronRight,

@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
+import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -32,14 +36,20 @@ class InboxViewModel @Inject constructor(
     private val showCleanupDialog = MutableStateFlow(false)
     private val pendingDeleteId = MutableStateFlow<String?>(null)
 
+    // 게시물별 CaptionParsingWorker가 아직 안 끝났으면 그 postId가 여기 들어있다 — 인박스에서 "정리 중" 표시용.
+    private val processingPostIds = WorkManager.getInstance(context)
+        .getWorkInfosByTagFlow(CaptionParsingWorker.TAG)
+        .map { infos -> infos.filter { !it.state.isFinished }.flatMap(WorkInfo::tags).toSet() }
+
     val uiState: StateFlow<InboxUiState> = combine(
         repository.observeUnresolved(),
         showCleanupDialog,
         pendingDeleteId,
-    ) { posts, showDialog, deleteId ->
+        processingPostIds,
+    ) { posts, showDialog, deleteId, processingIds ->
         val staleThreshold = System.currentTimeMillis() - STALE_THRESHOLD_MILLIS
         InboxUiState(
-            items = posts.map { it.toInboxItem() },
+            items = posts.map { it.toInboxItem(isProcessing = it.id in processingIds) },
             isLoading = false,
             // UNRESOLVED는 캐시 미스(미등록 계정 포함)나 파싱 실패를 모두 포함한다.
             // 어느 쪽이든 계정을 등록하면 다음 동기화에서 자동 재매칭을 시도한다.
@@ -90,11 +100,12 @@ class InboxViewModel @Inject constructor(
         }
     }
 
-    private fun SavedPostEntity.toInboxItem() = InboxItem(
+    private fun SavedPostEntity.toInboxItem(isProcessing: Boolean) = InboxItem(
         id = id,
         instagramUrl = instagramUrl,
         relativeTime = RelativeTimeFormatter.format(createdAt),
         extractedCount = extractedCount,
         thumbnailUrl = thumbnailUrl,
+        isProcessing = isProcessing,
     )
 }

@@ -29,9 +29,9 @@ import okhttp3.Request
 import java.io.IOException
 import javax.inject.Inject
 
-// 2026-10-16에 만료 예정 — 교체 전에 https://ai.google.dev/gemini-api/docs/deprecations 에서 최신 모델 ID 확인할 것.
-private const val GEMINI_MODEL_NAME = "gemini-2.5-flash"
-private const val FIREBASE_APP_NAME = "eonje-genai"
+// gemini-2.5-flash는 신규 사용자에게 이미 종료됨(2026-09 확인) — 만료 임박 시
+// https://ai.google.dev/gemini-api/docs/deprecations 에서 최신 모델 ID 확인할 것.
+private const val GEMINI_MODEL_NAME = "gemini-3.6-flash"
 private const val MAX_IMAGES = 3
 
 @Serializable
@@ -106,9 +106,11 @@ class CaptionParsingRepositoryImpl @Inject constructor(
             .setApplicationId(applicationId)
             .setApiKey(apiKey)
             .build()
-        // google-services.json 없이도 동작하도록, 기본 앱과 분리된 이름 있는 FirebaseApp을 직접 초기화한다.
-        val app = FirebaseApp.getApps(context).firstOrNull { it.name == FIREBASE_APP_NAME }
-            ?: FirebaseApp.initializeApp(context, options, FIREBASE_APP_NAME)
+        // google-services.json 없이 기본(default) FirebaseApp을 직접 초기화한다.
+        // 이름 있는 별도 앱으로 초기화하면 Firebase AI SDK 내부 validateResponse가
+        // 이름 무관하게 기본 앱을 찾다가 "Default FirebaseApp is not initialized"로 죽는다.
+        val app = FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
+            ?: FirebaseApp.initializeApp(context, options)
 
         return Firebase.ai(app = app, backend = GenerativeBackend.googleAI()).generativeModel(
             modelName = GEMINI_MODEL_NAME,

@@ -43,9 +43,14 @@ class CaptionParsingWorker @AssistedInject constructor(
     }
 
     companion object {
+        /** 인박스 UI가 "정리 중" 표시를 하려고 WorkManager에서 게시물별 진행 상태를 관찰할 때 쓰는 태그. */
+        const val TAG = "caption_parsing"
+
         fun request(postId: String) =
             OneTimeWorkRequestBuilder<CaptionParsingWorker>()
                 .setInputData(inputData(postId))
+                .addTag(TAG)
+                .addTag(postId)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)

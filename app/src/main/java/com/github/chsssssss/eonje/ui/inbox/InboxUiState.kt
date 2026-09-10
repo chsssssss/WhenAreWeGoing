@@ -15,4 +15,5 @@ data class InboxItem(
     val relativeTime: String,
     val extractedCount: Int = 0,
     val thumbnailUrl: String? = null,
+    val isProcessing: Boolean = false,
 )

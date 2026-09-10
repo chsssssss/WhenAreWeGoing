@@ -22,6 +22,9 @@ private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:m
 // https://developers.facebook.com/docs/graph-api/guides/error-handling — 190 = 만료되었거나 무효한 OAuth 액세스 토큰.
 private const val OAUTH_ERROR_CODE = 190
 
+// 오래된 게시물 조회 시 뒤져볼 최대 페이지 수 (페이지당 25건 = 최대 125건까지 역추적).
+private const val MAX_LOOKUP_PAGES = 5
+
 class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
     private val api: InstagramBusinessDiscoveryApi,
     private val json: Json,
@@ -58,6 +61,35 @@ class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
                     media = discovery.media?.data.orEmpty().mapNotNull { it.toDiscoveredMediaOrNull() },
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HttpException) {
+            Result.failure(e.toDomainException())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun findMediaByShortcode(username: String, shortcode: String): Result<DiscoveredMedia?> {
+        val myIgUserId = BuildConfig.IG_BUSINESS_ACCOUNT_ID
+        val accessToken = BuildConfig.IG_ACCESS_TOKEN
+        if (myIgUserId.isBlank() || accessToken.isBlank()) {
+            return Result.failure(IllegalStateException("인스타그램 연동 토큰이 설정되지 않았어요"))
+        }
+        return try {
+            var after: String? = null
+            repeat(MAX_LOOKUP_PAGES) {
+                val response = api.getBusinessDiscovery(
+                    myIgUserId = myIgUserId,
+                    fields = InstagramBusinessDiscoveryApi.fields(username, after),
+                    accessToken = accessToken,
+                )
+                val media = response.businessDiscovery?.media ?: return Result.success(null)
+                val match = media.data.firstOrNull { InstagramUrlParser.extractShortcode(it.permalink) == shortcode }
+                if (match != null) return Result.success(match.toDiscoveredMediaOrNull())
+                after = media.paging?.cursors?.after ?: return Result.success(null)
+            }
+            Result.success(null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: HttpException) {

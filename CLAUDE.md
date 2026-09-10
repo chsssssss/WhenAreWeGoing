@@ -26,7 +26,7 @@
 | DI | Hilt |
 | 로컬 DB | Room |
 | 네트워크 | Retrofit + OkHttp + kotlinx.serialization (Instagram, 카카오 로컬) |
-| 캡션 파싱 (AI) | Firebase AI Logic (Gemini 2.0 Flash 무료 티어) 우선, 지원 기기는 ML Kit GenAI(Gemini Nano) 온디바이스 우선 시도 |
+| 캡션 파싱 (AI) | 지원 기기는 ML Kit GenAI(Gemini Nano) 온디바이스 우선 시도, 아니면 Firebase AI Logic(Gemini Flash 무료 티어, App Check 필수)으로 폴백 |
 | 비동기 | Coroutines + Flow |
 | 백그라운드 | WorkManager |
 | 지도 | 카카오맵 SDK (카카오 로컬 API와 좌표계 통일) |
@@ -34,7 +34,7 @@
 | 이미지 | Coil |
 | 백엔드 | 없음. 모든 API는 클라이언트에서 직접 호출 (아래 "비용·서버 구조" 참고) |
 
-*캡션 파싱은 ML Kit GenAI(온디바이스)/Firebase AI Logic(클라우드 폴백) 코드로 교체 완료. 다만 Firebase 프로젝트를 아직 만들지 않아서, 실제 기기에서는 온디바이스 지원 여부에 따라 동작이 갈린다 — 개발 단계 체크리스트 참고.*
+*캡션 파싱은 실기기(Galaxy Note9, API 29)에서 공유 → 파싱 → 카카오 검색 → 자동 확정까지 전 과정 검증 완료(2026-09-10). Firebase AI Logic은 App Check(디버그: Debug Provider, 릴리스: Play Integrity)가 없으면 요청 자체를 거부하므로 `EonjeApplication`에서 필수로 초기화한다.*
 
 ## 패키지 구조
 
@@ -173,10 +173,10 @@ data class PlaceTagCrossRef(
 ### F2. 장소 추출 및 매칭 (WorkManager)
 
 1. shortcode → 로컬 캐시(CachedMedia) 조회
-2. 미스 → UNRESOLVED 종료
+2. 미스 → 등록된 계정이면 그 계정 게시물을 페이지 넘겨가며(최대 5페이지, 125건) shortcode를 찾아본다(오래된 게시물 대응). 그래도 못 찾거나 미등록 계정이면 UNRESOLVED 종료
 3. 캡션 파싱 시도 순서:
    a. 기기가 ML Kit GenAI(Gemini Nano) 지원 시 온디바이스로 우선 시도 — 비용 0, 네트워크 불필요
-   b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini 2.0 Flash 호출 (무료 티어)
+   b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini Flash 호출 (무료 티어, App Check 필요)
    c. 두 경로 모두 `@Generable` 구조화 출력으로 `[{상호명, 지역, 메뉴}]` 배열 응답 받기
 4. 결과 없으면 2차 파싱: 캡션 + 이미지 함께 전달 (캐리셀 앞 3장). 이미지 입력은 온디바이스보다 Firebase AI Logic(Gemini) 경로가 안정적 — 비전은 클라우드 우선
 5. 각 항목 카카오 로컬 검색 (클라이언트에서 직접 호출, 앱 서명 기반 키 제한)
@@ -189,14 +189,14 @@ data class PlaceTagCrossRef(
 
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
 
-*3단계 참고: 위 1~7번 전부 코드로 구현돼 있다. 다만 Firebase 프로젝트를 아직 안 만들어서, 실제 기기에서는 온디바이스(ML Kit GenAI)가 지원되는 기기에서만 3번이 동작하고 — 미지원 기기나 이미지 포함 2차 파싱은 Firebase 프로젝트가 생길 때까지 UNRESOLVED로 빠진다. 설계 원칙 1(저장은 항상 성공)엔 영향 없다.*
+*3단계 참고: 위 1~7번 전부 코드로 구현돼 있고 Firebase 프로젝트도 생성돼, 온디바이스(ML Kit GenAI) 미지원 기기나 이미지 포함 2차 파싱도 Firebase AI Logic 경로로 정상 동작한다.*
 
 ### F3. 계정 등록 및 동기화
 
 - Business Discovery API 사용
 - username 입력 → 프로페셔널 계정 확인 → 등록
 - WorkManager: 1일 1회, NetworkType.UNMETERED + requiresCharging
-- 계정당 최근 50건 유지
+- 계정당 최근 25건 유지 — `media.limit(50)`은 캐러셀·비디오 하위 필드까지 한 번에 요청하면 Meta가 `"Please reduce the amount of data you're asking for"`(에러 코드 1)로 거부해서 낮춤. 25건 기준 응답이 10초 넘게 걸릴 수 있어 Instagram Retrofit 클라이언트만 타임아웃을 30초로 늘려뒀음(`NetworkModule`)
 - 등록 후 UNRESOLVED 게시물 중 해당 계정 것만 매칭 재시도
 
 ### Business Discovery 엔드포인트
@@ -204,7 +204,7 @@ data class PlaceTagCrossRef(
 ```
 GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
   ?fields=business_discovery.username({TARGET})
-          {media.limit(50){permalink,caption,timestamp,media_url,
+          {media.limit(25){permalink,caption,timestamp,media_url,
                            media_type,children{media_url,media_type}}}
   &access_token={TOKEN}
 ```
@@ -237,7 +237,7 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 
 | 기능 | 방식 | 비용 |
 |---|---|---|
-| 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini 2.0 Flash 무료 티어 호출 | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
+| 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini Flash 무료 티어 호출 (App Check 필수) | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
 | 카카오 로컬 검색 | 클라이언트에서 REST API 직접 호출, 카카오 개발자 콘솔에서 앱 서명(SHA) 기반 키 제한 설정 | 카카오 무료 쿼터 내 |
 | Business Discovery | 개발자 본인 토큰으로 클라이언트가 직접 호출 (키는 앱에 두지 않고 필요 최소 범위로 관리 검토) | 무료. 단 속도 제한 있음 (위 참고) |
 
@@ -246,6 +246,8 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 **무료 티어를 넘어서면** — Gemini 무료 티어 일일 한도(1500건)를 앱 전체 사용량이 넘으면 그 시점에 Firebase 프로젝트를 유료(Blaze) 플랜으로 전환하고 사용량만큼만 과금되는 구조로 넘어간다. 지금 규모에서는 해당 사항이 아니며, 이 한도에 근접하는지는 출시 후 모니터링으로 판단한다.
 
 **Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외. (과거엔 Claude Haiku로 구현했었으나 이 원칙에 따라 걷어내고 온디바이스/Firebase AI Logic으로 교체했다.)
+
+**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). `EonjeApplication.initFirebaseAppCheck()`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 설치한다. Debug Provider의 디바이스별 토큰은 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다 필요한 일회성 작업.
 
 ## 개발 단계
 
@@ -267,7 +269,7 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] HomeScreen — 지도, 리스트 토글, 태그 필터
 - [x] PlaceDetailScreen
 
-### 현재: 3단계 — 자동 매칭 (App Review 병행) + 공개 출시 준비
+### 3단계 — 자동 매칭 (App Review 병행) + 공개 출시 준비 (완료)
 
 - [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
 - [x] AccountsScreen — 계정 등록 (+ ResolveScreen 지름길 버튼)
@@ -276,9 +278,9 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] ResolveScreen 다중 모드
 - [x] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리 — `FeatureStatus.AVAILABLE` 확인 후 시도, 안 되면 조용히 폴백
 - [x] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체 — `CaptionParsingRepositoryImpl` 재작성 완료
-- [x] Firebase AI Logic SDK 연동(코드) — `google-services.json` 없이 `FirebaseOptions`로 직접 초기화, 프로젝트 없어도 컴파일되고 캡션 파싱은 온디바이스만 동작
-- [ ] Firebase 프로젝트 생성(Spark 무료 플랜) — `local.properties`에 `FIREBASE_PROJECT_ID`/`FIREBASE_APPLICATION_ID`/`FIREBASE_API_KEY` 채워 넣기. 콘솔 작업이라 코드로 대신할 수 없음
-- [ ] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정 — 콘솔 작업이라 코드로 대신할 수 없음
+- [x] Firebase AI Logic SDK 연동(코드) — `google-services.json` 없이 `FirebaseOptions`로 기본 앱 직접 초기화, App Check(디버그/Play Integrity) 연동 포함
+- [x] Firebase 프로젝트 생성(Spark 무료 플랜) — `wherewegoing-a5493` 프로젝트 생성, `local.properties`에 `FIREBASE_PROJECT_ID`/`FIREBASE_APPLICATION_ID`/`FIREBASE_API_KEY` 채워 넣음, Vertex AI in Firebase API 활성화
+- [x] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정
 
 ### 3.5단계 — 이미지 파싱 (보류)
 
