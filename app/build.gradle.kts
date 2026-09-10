@@ -114,6 +114,8 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.ai)
+    implementation(libs.firebase.appcheck.playintegrity)
+    implementation(libs.firebase.appcheck.debug)
     implementation(libs.mlkit.genai.prompt)
 
     implementation(libs.androidx.work.runtime.ktx)
