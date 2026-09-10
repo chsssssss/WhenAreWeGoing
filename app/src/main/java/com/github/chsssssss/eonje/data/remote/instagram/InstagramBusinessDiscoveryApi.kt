@@ -13,10 +13,13 @@ interface InstagramBusinessDiscoveryApi {
     ): BusinessDiscoveryResponse
 
     companion object {
-        fun fields(targetUsername: String) =
-            "business_discovery.username($targetUsername)" +
+        /** [after]가 주어지면 그 커서 다음 페이지를 요청한다 (오래된 게시물 조회용). */
+        fun fields(targetUsername: String, after: String? = null): String {
+            val afterClause = after?.let { ".after($it)" }.orEmpty()
+            return "business_discovery.username($targetUsername)" +
                 "{id,username,profile_picture_url," +
-                "media.limit(25){permalink,caption,timestamp,media_url,media_type," +
+                "media$afterClause.limit(25){permalink,caption,timestamp,media_url,media_type," +
                 "children{media_url,media_type}}}"
+        }
     }
 }

@@ -173,7 +173,7 @@ data class PlaceTagCrossRef(
 ### F2. 장소 추출 및 매칭 (WorkManager)
 
 1. shortcode → 로컬 캐시(CachedMedia) 조회
-2. 미스 → UNRESOLVED 종료
+2. 미스 → 등록된 계정이면 그 계정 게시물을 페이지 넘겨가며(최대 5페이지, 125건) shortcode를 찾아본다(오래된 게시물 대응). 그래도 못 찾거나 미등록 계정이면 UNRESOLVED 종료
 3. 캡션 파싱 시도 순서:
    a. 기기가 ML Kit GenAI(Gemini Nano) 지원 시 온디바이스로 우선 시도 — 비용 0, 네트워크 불필요
    b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini Flash 호출 (무료 티어, App Check 필요)

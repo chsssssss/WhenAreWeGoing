@@ -1,5 +1,6 @@
 package com.github.chsssssss.eonje.domain.usecase
 
+import com.github.chsssssss.eonje.data.local.CachedMediaEntity
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
@@ -9,9 +10,11 @@ import com.github.chsssssss.eonje.domain.notification.PlaceSavedNotifier
 import com.github.chsssssss.eonje.domain.repository.CachedMediaRepository
 import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
+import com.github.chsssssss.eonje.domain.repository.InstagramBusinessDiscoveryRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
 import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
@@ -32,6 +35,8 @@ sealed interface MatchPostResult {
 class MatchPostUseCase @Inject constructor(
     private val savedPostRepository: SavedPostRepository,
     private val cachedMediaRepository: CachedMediaRepository,
+    private val watchedAccountRepository: WatchedAccountRepository,
+    private val discoveryRepository: InstagramBusinessDiscoveryRepository,
     private val captionParsingRepository: CaptionParsingRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val placeRepository: PlaceRepository,
@@ -42,7 +47,12 @@ class MatchPostUseCase @Inject constructor(
         val post = savedPostRepository.findById(postId) ?: return MatchPostResult.Done
         val shortcode = post.shortcode ?: return unresolved(postId)
 
-        val cached = cachedMediaRepository.findByShortcode(shortcode) ?: return unresolved(postId)
+        val cached = cachedMediaRepository.findByShortcode(shortcode)
+            ?: when (val fetch = lazyFetchFromWatchedAccounts(shortcode)) {
+                is LazyFetchResult.Found -> fetch.entity
+                LazyFetchResult.Retry -> return MatchPostResult.Retry
+                LazyFetchResult.NotFound -> return unresolved(postId)
+            }
         val caption = cached.caption
         if (caption.isNullOrBlank()) return unresolved(postId)
 
@@ -101,6 +111,28 @@ class MatchPostUseCase @Inject constructor(
     /** 앱 재실행 시 재매칭을 포기하고 조용히 UNRESOLVED로 넘길 때 쓴다 (재시도 횟수 초과). */
     suspend fun markUnresolved(postId: String) {
         unresolved(postId)
+    }
+
+    /**
+     * 평소 캐시(계정당 최근 25건)에 없는 오래된 게시물을 shortcode로 찾는다.
+     * 등록된 계정을 순서대로 뒤져보다가 처음 찾은 곳에서 멈춘다.
+     */
+    private suspend fun lazyFetchFromWatchedAccounts(shortcode: String): LazyFetchResult {
+        for (account in watchedAccountRepository.getAll()) {
+            val result = discoveryRepository.findMediaByShortcode(account.username, shortcode)
+            if (result.isRetryableFailure()) return LazyFetchResult.Retry
+            val media = result.getOrNull() ?: continue
+            cachedMediaRepository.cacheSingle(account.username, media)
+            val entity = cachedMediaRepository.findByShortcode(shortcode) ?: continue
+            return LazyFetchResult.Found(entity)
+        }
+        return LazyFetchResult.NotFound
+    }
+
+    private sealed interface LazyFetchResult {
+        data class Found(val entity: CachedMediaEntity) : LazyFetchResult
+        data object NotFound : LazyFetchResult
+        data object Retry : LazyFetchResult
     }
 
     private suspend fun searchCandidates(place: ExtractedPlace): Result<List<PlaceCandidate>> {

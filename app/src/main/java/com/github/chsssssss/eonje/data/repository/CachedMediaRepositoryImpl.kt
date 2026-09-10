@@ -18,6 +18,10 @@ class CachedMediaRepositoryImpl @Inject constructor(
         dao.pruneToRecent(username)
     }
 
+    override suspend fun cacheSingle(username: String, media: DiscoveredMedia) {
+        dao.insertAll(listOf(media.toEntity(username, System.currentTimeMillis())))
+    }
+
     private fun DiscoveredMedia.toEntity(username: String, cachedAt: Long) = CachedMediaEntity(
         shortcode = shortcode,
         username = username,

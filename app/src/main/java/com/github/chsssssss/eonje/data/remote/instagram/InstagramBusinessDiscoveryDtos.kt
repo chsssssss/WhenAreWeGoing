@@ -20,6 +20,17 @@ data class BusinessDiscoveryDto(
 @Serializable
 data class MediaConnectionDto(
     val data: List<MediaItemDto> = emptyList(),
+    val paging: PagingDto? = null,
+)
+
+@Serializable
+data class PagingDto(
+    val cursors: CursorsDto? = null,
+)
+
+@Serializable
+data class CursorsDto(
+    val after: String? = null,
 )
 
 @Serializable
