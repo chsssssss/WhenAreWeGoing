@@ -34,7 +34,7 @@
 | 이미지 | Coil |
 | 백엔드 | 없음. 모든 API는 클라이언트에서 직접 호출 (아래 "비용·서버 구조" 참고) |
 
-*캡션 파싱은 ML Kit GenAI(온디바이스)/Firebase AI Logic(클라우드 폴백) 코드로 교체 완료. 다만 Firebase 프로젝트를 아직 만들지 않아서, 실제 기기에서는 온디바이스 지원 여부에 따라 동작이 갈린다 — 개발 단계 체크리스트 참고.*
+*캡션 파싱은 ML Kit GenAI(온디바이스)/Firebase AI Logic(클라우드 폴백) 코드로 교체 완료. Firebase 프로젝트(`wherewegoing-a5493`)도 생성돼 두 경로 모두 정상 동작한다.*
 
 ## 패키지 구조
 
@@ -189,7 +189,7 @@ data class PlaceTagCrossRef(
 
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
 
-*3단계 참고: 위 1~7번 전부 코드로 구현돼 있다. 다만 Firebase 프로젝트를 아직 안 만들어서, 실제 기기에서는 온디바이스(ML Kit GenAI)가 지원되는 기기에서만 3번이 동작하고 — 미지원 기기나 이미지 포함 2차 파싱은 Firebase 프로젝트가 생길 때까지 UNRESOLVED로 빠진다. 설계 원칙 1(저장은 항상 성공)엔 영향 없다.*
+*3단계 참고: 위 1~7번 전부 코드로 구현돼 있고 Firebase 프로젝트도 생성돼, 온디바이스(ML Kit GenAI) 미지원 기기나 이미지 포함 2차 파싱도 Firebase AI Logic 경로로 정상 동작한다.*
 
 ### F3. 계정 등록 및 동기화
 
@@ -267,7 +267,7 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] HomeScreen — 지도, 리스트 토글, 태그 필터
 - [x] PlaceDetailScreen
 
-### 현재: 3단계 — 자동 매칭 (App Review 병행) + 공개 출시 준비
+### 3단계 — 자동 매칭 (App Review 병행) + 공개 출시 준비 (완료)
 
 - [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
 - [x] AccountsScreen — 계정 등록 (+ ResolveScreen 지름길 버튼)
@@ -277,8 +277,8 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리 — `FeatureStatus.AVAILABLE` 확인 후 시도, 안 되면 조용히 폴백
 - [x] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체 — `CaptionParsingRepositoryImpl` 재작성 완료
 - [x] Firebase AI Logic SDK 연동(코드) — `google-services.json` 없이 `FirebaseOptions`로 직접 초기화, 프로젝트 없어도 컴파일되고 캡션 파싱은 온디바이스만 동작
-- [ ] Firebase 프로젝트 생성(Spark 무료 플랜) — `local.properties`에 `FIREBASE_PROJECT_ID`/`FIREBASE_APPLICATION_ID`/`FIREBASE_API_KEY` 채워 넣기. 콘솔 작업이라 코드로 대신할 수 없음
-- [ ] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정 — 콘솔 작업이라 코드로 대신할 수 없음
+- [x] Firebase 프로젝트 생성(Spark 무료 플랜) — `wherewegoing-a5493` 프로젝트 생성, `local.properties`에 `FIREBASE_PROJECT_ID`/`FIREBASE_APPLICATION_ID`/`FIREBASE_API_KEY` 채워 넣음
+- [x] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정
 
 ### 3.5단계 — 이미지 파싱 (보류)
 
