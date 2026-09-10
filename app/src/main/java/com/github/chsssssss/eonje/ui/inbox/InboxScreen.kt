@@ -226,7 +226,7 @@ private fun SwipeableInboxCard(item: InboxItem, onClick: () -> Unit, onSwipeToDe
         backgroundContent = {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .clip(RoundedCornerShape(20.dp))
                     .background(EonjeColors.danger)
                     .padding(horizontal = 20.dp),

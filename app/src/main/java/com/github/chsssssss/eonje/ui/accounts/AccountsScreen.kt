@@ -186,7 +186,7 @@ private fun SwipeableAccountRow(account: AccountUiModel, onRetrySync: () -> Unit
         backgroundContent = {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .clip(RoundedCornerShape(20.dp))
                     .background(EonjeColors.danger)
                     .padding(horizontal = 20.dp),
