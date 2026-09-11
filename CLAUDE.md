@@ -207,7 +207,7 @@ data class PlaceTagCrossRef(
 - username 입력 → 프로페셔널 계정 확인 → 등록
 - WorkManager: 1일 1회, NetworkType.UNMETERED + requiresCharging
 - 계정당 최근 25건 유지 — `media.limit(50)`은 캐러셀·비디오 하위 필드까지 한 번에 요청하면 Meta가 `"Please reduce the amount of data you're asking for"`(에러 코드 1)로 거부해서 낮춤. 25건 기준 응답이 10초 넘게 걸릴 수 있어 Instagram Retrofit 클라이언트만 타임아웃을 30초로 늘려뒀음(`NetworkModule`)
-- 등록 후 UNRESOLVED 게시물 중 해당 계정 것만 매칭 재시도
+- 등록 후 UNRESOLVED 게시물 중 해당 계정 것만 매칭 재시도 — 계정 등록 화면이 이 재매칭을 기다리지 않도록, Business Discovery 확인이 끝나는 즉시 등록을 완료하고 재매칭은 게시물별로 CaptionParsingWorker에 위임한다(F2와 동일 경로). 밀린 게시물이 많아도 등록 자체는 빠르고, 진행 상황은 인박스의 "정리 중" 칩으로 보인다.
 
 ### Business Discovery 엔드포인트
 
