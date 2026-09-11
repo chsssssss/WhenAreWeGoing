@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -21,8 +22,8 @@ interface SavedPostDao {
     @Query("SELECT * FROM saved_posts WHERE id IN (:ids) ORDER BY createdAt DESC")
     suspend fun findByIds(ids: List<String>): List<SavedPostEntity>
 
-    @Query("UPDATE saved_posts SET status = :status WHERE id = :id")
-    suspend fun updateStatus(id: String, status: ResolveStatus)
+    @Query("UPDATE saved_posts SET status = :status, unresolvedReason = :unresolvedReason WHERE id = :id")
+    suspend fun updateStatus(id: String, status: ResolveStatus, unresolvedReason: UnresolvedReason?)
 
     @Query(
         "UPDATE saved_posts SET caption = :caption, thumbnailUrl = :thumbnailUrl, extractedCount = :extractedCount WHERE id = :id"

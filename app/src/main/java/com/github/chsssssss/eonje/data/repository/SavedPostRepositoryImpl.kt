@@ -3,6 +3,7 @@ package com.github.chsssssss.eonje.data.repository
 import com.github.chsssssss.eonje.data.local.SavedPostDao
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -19,8 +20,8 @@ class SavedPostRepositoryImpl @Inject constructor(
 
     override suspend fun save(post: SavedPostEntity) = dao.insert(post)
 
-    override suspend fun updateStatus(id: String, status: ResolveStatus) =
-        dao.updateStatus(id, status)
+    override suspend fun updateStatus(id: String, status: ResolveStatus, unresolvedReason: UnresolvedReason?) =
+        dao.updateStatus(id, status, unresolvedReason)
 
     override suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int) =
         dao.updateExtraction(id, caption, thumbnailUrl, extractedCount)

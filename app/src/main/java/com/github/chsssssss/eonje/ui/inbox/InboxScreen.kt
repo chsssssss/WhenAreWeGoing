@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.github.chsssssss.eonje.domain.model.UnresolvedReason
+import com.github.chsssssss.eonje.ui.components.AccountNotFoundChip
 import com.github.chsssssss.eonje.ui.components.CandidateStatusChip
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
@@ -279,10 +281,10 @@ private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text(item.relativeTime, style = Typography.bodySmall, color = EonjeColors.textMuted)
-            if (item.isProcessing) {
-                ProcessingStatusChip()
-            } else {
-                CandidateStatusChip(candidateCount = item.extractedCount)
+            when {
+                item.isProcessing -> ProcessingStatusChip()
+                item.unresolvedReason == UnresolvedReason.ACCOUNT_NOT_FOUND -> AccountNotFoundChip()
+                else -> CandidateStatusChip(candidateCount = item.extractedCount)
             }
         }
         Icon(

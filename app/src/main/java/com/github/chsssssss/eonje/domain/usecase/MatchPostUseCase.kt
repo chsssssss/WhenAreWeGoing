@@ -6,6 +6,7 @@ import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.notification.PlaceSavedNotifier
 import com.github.chsssssss.eonje.domain.repository.CachedMediaRepository
 import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
@@ -45,16 +46,16 @@ class MatchPostUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(postId: String): MatchPostResult {
         val post = savedPostRepository.findById(postId) ?: return MatchPostResult.Done
-        val shortcode = post.shortcode ?: return unresolved(postId)
+        val shortcode = post.shortcode ?: return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
 
         val cached = cachedMediaRepository.findByShortcode(shortcode)
             ?: when (val fetch = lazyFetchFromWatchedAccounts(shortcode)) {
                 is LazyFetchResult.Found -> fetch.entity
                 LazyFetchResult.Retry -> return MatchPostResult.Retry
-                LazyFetchResult.NotFound -> return unresolved(postId)
+                LazyFetchResult.NotFound -> return unresolved(postId, UnresolvedReason.ACCOUNT_NOT_FOUND)
             }
         val caption = cached.caption
-        if (caption.isNullOrBlank()) return unresolved(postId)
+        if (caption.isNullOrBlank()) return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
 
         savedPostRepository.updateExtraction(
             id = postId,
@@ -75,7 +76,7 @@ class MatchPostUseCase @Inject constructor(
             extracted = secondPass.getOrNull().orEmpty()
         }
 
-        if (extracted.isEmpty()) return unresolved(postId)
+        if (extracted.isEmpty()) return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
 
         savedPostRepository.updateExtraction(
             id = postId,
@@ -90,13 +91,15 @@ class MatchPostUseCase @Inject constructor(
             if (result.isRetryableFailure()) return MatchPostResult.Retry
             searched += place to result.getOrNull().orEmpty()
         }
-        if (searched.all { (_, candidates) -> candidates.isEmpty() }) return unresolved(postId)
+        if (searched.all { (_, candidates) -> candidates.isEmpty() }) {
+            return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
+        }
 
         // 추출 1건 + 검색 1건 → 자동 확정. 그 외(추출 2건 이상, 후보 다수)는 무조건 다중 모드.
         if (extracted.size == 1) {
             val candidates = searched.first().second
             when {
-                candidates.isEmpty() -> return unresolved(postId)
+                candidates.isEmpty() -> return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
                 candidates.size == 1 -> {
                     autoResolve(postId, candidates.first())
                     return MatchPostResult.Done
@@ -110,7 +113,7 @@ class MatchPostUseCase @Inject constructor(
 
     /** 앱 재실행 시 재매칭을 포기하고 조용히 UNRESOLVED로 넘길 때 쓴다 (재시도 횟수 초과). */
     suspend fun markUnresolved(postId: String) {
-        unresolved(postId)
+        unresolved(postId, UnresolvedReason.NETWORK_ERROR)
     }
 
     /**
@@ -161,7 +164,7 @@ class MatchPostUseCase @Inject constructor(
             )
         )
         placeRepository.linkPostToPlace(postId, placeId)
-        savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
+        savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
         notifier.notifyResolved(candidate.name)
     }
 
@@ -186,11 +189,11 @@ class MatchPostUseCase @Inject constructor(
             }
         }
         extractedCandidateRepository.replaceForPost(postId, entities)
-        savedPostRepository.updateStatus(postId, ResolveStatus.NEEDS_REVIEW)
+        savedPostRepository.updateStatus(postId, ResolveStatus.NEEDS_REVIEW, unresolvedReason = null)
     }
 
-    private suspend fun unresolved(postId: String): MatchPostResult {
-        savedPostRepository.updateStatus(postId, ResolveStatus.UNRESOLVED)
+    private suspend fun unresolved(postId: String, reason: UnresolvedReason): MatchPostResult {
+        savedPostRepository.updateStatus(postId, ResolveStatus.UNRESOLVED, reason)
         return MatchPostResult.Done
     }
 }

@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 
 @Entity(tableName = "saved_posts", indices = [Index(value = ["shortcode"])])
 data class SavedPostEntity(
@@ -14,5 +15,6 @@ data class SavedPostEntity(
     val thumbnailUrl: String?,
     val status: ResolveStatus,
     val extractedCount: Int,
-    val createdAt: Long
+    val createdAt: Long,
+    val unresolvedReason: UnresolvedReason? = null,
 )

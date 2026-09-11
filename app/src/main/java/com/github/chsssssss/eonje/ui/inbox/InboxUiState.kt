@@ -1,5 +1,7 @@
 package com.github.chsssssss.eonje.ui.inbox
 
+import com.github.chsssssss.eonje.domain.model.UnresolvedReason
+
 data class InboxUiState(
     val items: List<InboxItem> = emptyList(),
     val isLoading: Boolean = true,
@@ -16,4 +18,5 @@ data class InboxItem(
     val extractedCount: Int = 0,
     val thumbnailUrl: String? = null,
     val isProcessing: Boolean = false,
+    val unresolvedReason: UnresolvedReason? = null,
 )

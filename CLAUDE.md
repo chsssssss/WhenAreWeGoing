@@ -76,7 +76,8 @@ data class SavedPostEntity(
     val thumbnailUrl: String?,
     val status: ResolveStatus,
     val extractedCount: Int,
-    val createdAt: Long
+    val createdAt: Long,
+    val unresolvedReason: UnresolvedReason?   // status == UNRESOLVED일 때만 값이 있음
 )
 
 @Entity(tableName = "places")
@@ -104,7 +105,14 @@ enum class ResolveStatus {
     PENDING,        // 저장 직후, 매칭 대기
     RESOLVED,       // 장소 확정
     NEEDS_REVIEW,   // 후보 여러 개 또는 다중 장소 — 사용자 선택 필요
-    UNRESOLVED      // 캐시 미스, 파싱 실패, 미등록 계정
+    UNRESOLVED      // 캐시 미스, 파싱 실패, 미등록 계정 — 구체적인 원인은 UnresolvedReason 참고
+}
+
+/** UNRESOLVED가 "계정을 등록해야 하는지" "계정은 맞는데 장소를 못 찾은 건지"를 인박스에서 구분해 보여주는 데 쓴다. */
+enum class UnresolvedReason {
+    ACCOUNT_NOT_FOUND,  // shortcode가 등록된 계정 어디에도 없음 — 계정 등록/재동기화 필요
+    PLACE_NOT_FOUND,    // 계정은 확인됐지만 캡션 파싱·카카오 검색에서 장소를 못 찾음
+    NETWORK_ERROR,      // 재시도 한도 초과로 포기
 }
 
 @Entity(tableName = "watched_accounts")
@@ -149,7 +157,7 @@ data class PlaceTagCrossRef(
 |---|---|
 | ShareReceiverActivity | UI 없음. 인텐트 수신 → 토스트 → finish() |
 | HomeScreen | 지도 + 리스트 토글. 태그 필터 칩 |
-| InboxScreen | 미확정 게시물 카드 목록. 미등록 계정 배너 |
+| InboxScreen | 미확정 게시물 카드 목록. 미등록 계정 배너 + 카드별 미확정 사유 칩("계정 미등록" vs "직접 찾기") |
 | ResolveScreen | 단일/다중 모드. 위쪽 원본, 아래쪽 검색 |
 | PlaceDetailScreen | 장소 상세 + 관련 게시물 목록 |
 | AccountsScreen | 맛집 계정 등록·관리 |
@@ -184,7 +192,9 @@ data class PlaceTagCrossRef(
    - 추출 1건 + 검색 1건 → 자동 확정 (RESOLVED)
    - 추출 2건 이상 → 무조건 NEEDS_REVIEW (다중 모드)
    - 검색 결과 다수 → NEEDS_REVIEW (후보 최대 5개)
-   - 추출/검색 실패 → UNRESOLVED
+   - shortcode를 등록된 계정 어디서도 못 찾음(2번) → UNRESOLVED(`ACCOUNT_NOT_FOUND`)
+   - 캡션 파싱·카카오 검색 실패 → UNRESOLVED(`PLACE_NOT_FOUND`)
+   - 재시도 한도 초과 → UNRESOLVED(`NETWORK_ERROR`)
 7. 확정 시 알림: "○○식당 저장됨"
 
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
@@ -220,8 +230,8 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 
 | 상황 | 처리 |
 |---|---|
-| 미등록 계정 공유 | UNRESOLVED 저장, 다음 앱 실행 시 배너 안내 |
-| shortcode 캐시 미스 | UNRESOLVED, 조용히 인박스로 |
+| 미등록 계정 공유 | UNRESOLVED(`ACCOUNT_NOT_FOUND`) 저장, 인박스 배너 + 카드별 "계정 미등록" 칩으로 안내 |
+| shortcode 캐시 미스(등록 계정 포함 못 찾음) | UNRESOLVED(`ACCOUNT_NOT_FOUND`), 조용히 인박스로 |
 | 캡션에 상호명 없음 | 이미지 포함 2차 파싱 재시도 |
 | 추출 2건 이상 | NEEDS_REVIEW, 다중 체크박스 화면 |
 | media_url 만료 | 이미지 파싱 생략, 캡션 결과만 사용 |

@@ -235,7 +235,7 @@ class ResolveViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
             savePlace(candidate)
-            savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
+            savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
             InboxWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
@@ -252,7 +252,7 @@ class ResolveViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
             toSave.forEach { group -> savePlace(group.selected!!) }
-            savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED)
+            savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
             extractedCandidateRepository.replaceForPost(postId, emptyList())
             InboxWidget().updateAll(context)
 
