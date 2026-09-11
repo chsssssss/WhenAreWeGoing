@@ -75,7 +75,9 @@ fun AccountsScreen(
     if (uiState.isAddSheetVisible) {
         ModalBottomSheet(
             onDismissRequest = viewModel::onDismissAddSheet,
-            sheetState = rememberModalBottomSheetState(),
+            // 스와이프/스크림 탭으로 시트가 내려가는 것 자체를 막아야 한다 —
+            // onDismissRequest 가드만으로는 제스처로 시트가 시각적으로 사라지는 걸 못 막는다.
+            sheetState = rememberModalBottomSheetState(confirmValueChange = { !uiState.isRegistering }),
             containerColor = EonjeColors.surface,
         ) {
             AddAccountSheetContent(
