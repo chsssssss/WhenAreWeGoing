@@ -181,7 +181,7 @@ data class PlaceTagCrossRef(
 ### F2. 장소 추출 및 매칭 (WorkManager)
 
 1. shortcode → 로컬 캐시(CachedMedia) 조회
-2. 미스 → 등록된 계정이면 그 계정 게시물을 페이지 넘겨가며(최대 5페이지, 125건) shortcode를 찾아본다(오래된 게시물 대응). 그래도 못 찾거나 미등록 계정이면 UNRESOLVED 종료
+2. 미스 → 등록된 계정이면 그 계정 게시물을 커서가 끝날 때까지 페이지 넘겨가며(계정 전체) shortcode를 찾아본다(오래된 게시물 대응). 그래도 못 찾거나 미등록 계정이면 UNRESOLVED 종료
 3. 캡션 파싱 시도 순서:
    a. 기기가 ML Kit GenAI(Gemini Nano) 지원 시 온디바이스로 우선 시도 — 비용 0, 네트워크 불필요
    b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini Flash 호출 (무료 티어, App Check 필요)
@@ -207,7 +207,7 @@ data class PlaceTagCrossRef(
 - username 입력 → 프로페셔널 계정 확인 → 등록
 - WorkManager: 1일 1회, NetworkType.UNMETERED + requiresCharging
 - 계정당 최근 25건 유지 — `media.limit(50)`은 캐러셀·비디오 하위 필드까지 한 번에 요청하면 Meta가 `"Please reduce the amount of data you're asking for"`(에러 코드 1)로 거부해서 낮춤. 25건 기준 응답이 10초 넘게 걸릴 수 있어 Instagram Retrofit 클라이언트만 타임아웃을 30초로 늘려뒀음(`NetworkModule`)
-- 등록 후 UNRESOLVED 게시물 중 해당 계정 것만 매칭 재시도 — 계정 등록 화면이 이 재매칭을 기다리지 않도록, Business Discovery 확인이 끝나는 즉시 등록을 완료하고 재매칭은 게시물별로 CaptionParsingWorker에 위임한다(F2와 동일 경로). 밀린 게시물이 많아도 등록 자체는 빠르고, 진행 상황은 인박스의 "정리 중" 칩으로 보인다.
+- 등록 후 UNRESOLVED(`ACCOUNT_NOT_FOUND`) 게시물 전체를 매칭 재시도 — 최근 25건 캐시에 없는 오래된 게시물도 있을 수 있어 계정으로 스코핑하지 않고 전부 재시도하며, 실제 계정 매칭(어느 계정 게시물인지)은 F2의 커서 전체 탐색이 담당한다. 계정 등록 화면이 이 재매칭을 기다리지 않도록, Business Discovery 확인이 끝나는 즉시 등록을 완료하고 재매칭은 게시물별로 CaptionParsingWorker에 위임한다(F2와 동일 경로). 밀린 게시물이 많아도 등록 자체는 빠르고, 진행 상황은 인박스의 "정리 중" 칩으로 보인다.
 
 ### Business Discovery 엔드포인트
 

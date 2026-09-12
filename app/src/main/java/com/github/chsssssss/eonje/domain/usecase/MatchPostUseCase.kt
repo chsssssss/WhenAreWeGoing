@@ -16,6 +16,7 @@ import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
+import retrofit2.HttpException
 import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
@@ -143,8 +144,17 @@ class MatchPostUseCase @Inject constructor(
         return kakaoLocalRepository.searchPlaces(query)
     }
 
-    private fun <T> Result<T>.isRetryableFailure(): Boolean =
-        exceptionOrNull()?.let { it is IOException } == true
+    // IOException(네트워크 자체 실패)뿐 아니라, 서버 쪽 일시 오류(5xx)·호출 제한(429)도 재시도 대상으로 본다 —
+    // 그 외 HTTP 에러(4xx 등)는 다시 불러도 똑같이 실패할 가능성이 높아 바로 UNRESOLVED로 종결한다.
+    private fun <T> Result<T>.isRetryableFailure(): Boolean {
+        val exception = exceptionOrNull() ?: return false
+        if (exception is IOException) return true
+        if (exception is HttpException) {
+            val code = exception.code()
+            return code == 429 || code >= 500
+        }
+        return false
+    }
 
     private suspend fun autoResolve(postId: String, candidate: PlaceCandidate) {
         val now = System.currentTimeMillis()

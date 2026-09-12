@@ -53,7 +53,9 @@ class RegisterAccountUseCase @Inject constructor(
         )
         cachedMediaRepository.replaceForAccount(account.username, account.media)
 
-        savedPostRepository.findUnresolvedByAccount(account.username).forEach { post ->
+        // 캐시(최근 25건)에 없는 오래된 게시물도 있을 수 있으니 계정으로 스코핑하지 않고 전부 재시도한다 —
+        // 실제 계정 매칭은 MatchPostUseCase.lazyFetchFromWatchedAccounts가 전체 등록 계정을 뒤져서 처리한다.
+        savedPostRepository.findAccountNotFound().forEach { post ->
             workManager.enqueue(CaptionParsingWorker.request(post.id))
         }
 

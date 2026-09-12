@@ -37,13 +37,9 @@ interface SavedPostDao {
     fun observeUnresolved(): Flow<List<SavedPostEntity>>
 
     @Query(
-        """
-        SELECT saved_posts.* FROM saved_posts
-        INNER JOIN cached_media ON saved_posts.shortcode = cached_media.shortcode
-        WHERE cached_media.username = :username AND saved_posts.status = 'UNRESOLVED'
-        """
+        "SELECT * FROM saved_posts WHERE status = 'UNRESOLVED' AND unresolvedReason = 'ACCOUNT_NOT_FOUND'"
     )
-    suspend fun findUnresolvedByAccount(username: String): List<SavedPostEntity>
+    suspend fun findAccountNotFound(): List<SavedPostEntity>
 
     @Query("DELETE FROM saved_posts WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)

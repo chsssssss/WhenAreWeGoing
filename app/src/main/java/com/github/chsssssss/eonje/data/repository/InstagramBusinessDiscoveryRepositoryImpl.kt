@@ -22,9 +22,6 @@ private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:m
 // https://developers.facebook.com/docs/graph-api/guides/error-handling — 190 = 만료되었거나 무효한 OAuth 액세스 토큰.
 private const val OAUTH_ERROR_CODE = 190
 
-// 오래된 게시물 조회 시 뒤져볼 최대 페이지 수 (페이지당 25건 = 최대 125건까지 역추적).
-private const val MAX_LOOKUP_PAGES = 5
-
 class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
     private val api: InstagramBusinessDiscoveryApi,
     private val json: Json,
@@ -76,9 +73,11 @@ class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
         if (myIgUserId.isBlank() || accessToken.isBlank()) {
             return Result.failure(IllegalStateException("인스타그램 연동 토큰이 설정되지 않았어요"))
         }
-        return try {
+        try {
             var after: String? = null
-            repeat(MAX_LOOKUP_PAGES) {
+            // 계정 게시물 전체를 커서가 끝날 때까지 뒤진다 — 페이지당 25건, 응답마다 6초 안팎 걸리므로
+            // 게시물이 아주 많은 계정은 이 호출 하나가 오래 걸릴 수 있지만, 오래된 게시물도 결국 찾아낸다.
+            while (true) {
                 val response = api.getBusinessDiscovery(
                     myIgUserId = myIgUserId,
                     fields = InstagramBusinessDiscoveryApi.fields(username, after),
@@ -89,13 +88,12 @@ class InstagramBusinessDiscoveryRepositoryImpl @Inject constructor(
                 if (match != null) return Result.success(match.toDiscoveredMediaOrNull())
                 after = media.paging?.cursors?.after ?: return Result.success(null)
             }
-            Result.success(null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: HttpException) {
-            Result.failure(e.toDomainException())
+            return Result.failure(e.toDomainException())
         } catch (e: Exception) {
-            Result.failure(e)
+            return Result.failure(e)
         }
     }
 

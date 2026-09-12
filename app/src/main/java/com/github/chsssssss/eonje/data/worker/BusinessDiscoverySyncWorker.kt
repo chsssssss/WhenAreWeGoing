@@ -53,10 +53,12 @@ class BusinessDiscoverySyncWorker @AssistedInject constructor(
             tokenStatusStore.clearInstagramTokenExpired()
             cachedMediaRepository.replaceForAccount(account.username, discovered.media)
             watchedAccountRepository.markSynced(account.username)
+        }
 
-            savedPostRepository.findUnresolvedByAccount(account.username).forEach { post ->
-                matchPostUseCase(post.id)
-            }
+        // 계정별 최신 캐시 갱신이 끝난 뒤 한 번에 재시도한다 — 캐시(최근 25건)에 없는 오래된 게시물은
+        // MatchPostUseCase.lazyFetchFromWatchedAccounts가 등록된 계정을 전부 뒤져서 찾아낸다.
+        savedPostRepository.findAccountNotFound().forEach { post ->
+            matchPostUseCase(post.id)
         }
         return Result.success()
     }
