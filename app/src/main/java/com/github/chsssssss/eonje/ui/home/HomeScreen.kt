@@ -26,9 +26,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,14 +57,42 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    LocationPermissionRequester(onGranted = viewModel::refreshCurrentLocation)
     HomeContent(
         uiState = uiState,
         onToggleView = viewModel::toggleView,
         onPlaceClick = onPlaceClick,
+        onSelectPlace = viewModel::onSelectPlace,
         onSelectTag = viewModel::onSelectTag,
         onSearchQueryChange = viewModel::onSearchQueryChange,
         modifier = modifier,
     )
+}
+
+/**
+ * 지도를 현재 위치 중심으로 띄우기 위한 권한 요청. 거부해도 저장한 장소는 그대로 보이고,
+ * 지도만 저장된 장소 기준으로 그려진다.
+ */
+@Composable
+private fun LocationPermissionRequester(onGranted: () -> Unit) {
+    val context = LocalContext.current
+    val onGrantedState = rememberUpdatedState(onGranted)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = { result -> if (result.values.any { it }) onGrantedState.value() },
+    )
+
+    LaunchedEffect(Unit) {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            onGrantedState.value()
+        } else {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
+            )
+        }
+    }
 }
 
 @Composable
@@ -64,6 +100,7 @@ private fun HomeContent(
     uiState: HomeUiState,
     onToggleView: () -> Unit,
     onPlaceClick: (String) -> Unit,
+    onSelectPlace: (String?) -> Unit,
     onSelectTag: (String?) -> Unit,
     onSearchQueryChange: (String) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -77,7 +114,8 @@ private fun HomeContent(
             KakaoMapView(
                 places = uiState.places,
                 highlightedId = uiState.highlighted?.id,
-                onPlaceClick = onPlaceClick,
+                currentLocation = uiState.currentLocation,
+                onPlaceClick = onSelectPlace,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -360,9 +398,11 @@ private fun HomeScreenMapPreview() {
                 places = previewPlaces,
                 totalCount = previewPlaces.size,
                 tags = previewTags,
+                selectedPlaceId = previewPlaces.first().id,
             ),
             onToggleView = {},
             onPlaceClick = {},
+            onSelectPlace = {},
             onSelectTag = {},
         )
     }
@@ -382,6 +422,7 @@ private fun HomeScreenListPreview() {
             ),
             onToggleView = {},
             onPlaceClick = {},
+            onSelectPlace = {},
             onSelectTag = {},
         )
     }

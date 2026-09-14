@@ -42,16 +42,6 @@ android {
             "KAKAO_NATIVE_APP_KEY",
             "\"${localProperties.getProperty("KAKAO_NATIVE_APP_KEY", "")}\""
         )
-        buildConfigField(
-            "String",
-            "IG_BUSINESS_ACCOUNT_ID",
-            "\"${localProperties.getProperty("IG_BUSINESS_ACCOUNT_ID", "")}\""
-        )
-        buildConfigField(
-            "String",
-            "IG_ACCESS_TOKEN",
-            "\"${localProperties.getProperty("IG_ACCESS_TOKEN", "")}\""
-        )
         // Firebase AI Logic(Gemini 클라우드 폴백)용 — google-services.json 없이 FirebaseOptions로 직접 초기화한다.
         // Firebase 프로젝트 설정 전에는 비워둬도 빌드는 되고, 캡션 파싱은 온디바이스(ML Kit GenAI)만 시도한다.
         buildConfigField(
@@ -68,6 +58,22 @@ android {
             "String",
             "FIREBASE_API_KEY",
             "\"${localProperties.getProperty("FIREBASE_API_KEY", "")}\""
+        )
+        // Firebase AI Logic(Gemini) 전용 프로젝트 — 위 FIREBASE_* 와 분리된 별도 프로젝트.
+        buildConfigField(
+            "String",
+            "FIREBASE_GEMINI_PROJECT_ID",
+            "\"${localProperties.getProperty("FIREBASE_GEMINI_PROJECT_ID", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_GEMINI_APPLICATION_ID",
+            "\"${localProperties.getProperty("FIREBASE_GEMINI_APPLICATION_ID", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_GEMINI_API_KEY",
+            "\"${localProperties.getProperty("FIREBASE_GEMINI_API_KEY", "")}\""
         )
     }
 
@@ -109,6 +115,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.kakao.maps)
+    implementation(libs.play.services.location)
     implementation(libs.coil.compose)
     implementation(libs.androidx.glance.appwidget)
 
@@ -116,6 +123,8 @@ dependencies {
     implementation(libs.firebase.ai)
     implementation(libs.firebase.appcheck.playintegrity)
     implementation(libs.firebase.appcheck.debug)
+    implementation(libs.firebase.functions)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.mlkit.genai.prompt)
 
     implementation(libs.androidx.work.runtime.ktx)

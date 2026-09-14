@@ -1,5 +1,7 @@
 package com.github.chsssssss.eonje.ui.resolve
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,7 +22,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
@@ -28,9 +29,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,9 +43,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
-import com.github.chsssssss.eonje.ui.accounts.AddAccountSheetContent
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
-import com.github.chsssssss.eonje.ui.components.OutlinedPillButton
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
@@ -67,6 +64,13 @@ fun ResolveScreen(
             when (event) {
                 is ResolveEvent.Toast -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
                 ResolveEvent.NavigateBack -> onNavigateBack()
+                is ResolveEvent.OpenUrl -> {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(event.url)))
+                    }.onFailure {
+                        Toast.makeText(context, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }
@@ -81,27 +85,8 @@ fun ResolveScreen(
         onToggleGroupChecked = viewModel::onToggleGroupChecked,
         onToggleGroupExpanded = viewModel::onToggleGroupExpanded,
         onSelectMultiCandidate = viewModel::onSelectMultiCandidate,
-        onRegisterAccountClick = viewModel::onRegisterAccountClick,
         modifier = modifier,
     )
-
-    if (uiState.isRegisterAccountSheetVisible) {
-        ModalBottomSheet(
-            onDismissRequest = viewModel::onDismissRegisterAccountSheet,
-            // 스와이프/스크림 탭으로 시트가 내려가는 것 자체를 막아야 한다 —
-            // onDismissRequest 가드만으로는 제스처로 시트가 시각적으로 사라지는 걸 못 막는다.
-            sheetState = rememberModalBottomSheetState(confirmValueChange = { !uiState.isRegisteringAccount }),
-            containerColor = EonjeColors.surface,
-        ) {
-            AddAccountSheetContent(
-                username = uiState.registerAccountUsernameInput,
-                isRegistering = uiState.isRegisteringAccount,
-                onUsernameChange = viewModel::onRegisterAccountUsernameChange,
-                onCancel = viewModel::onDismissRegisterAccountSheet,
-                onConfirm = viewModel::onConfirmRegisterAccount,
-            )
-        }
-    }
 }
 
 @Composable
@@ -115,7 +100,6 @@ private fun ResolveContent(
     onToggleGroupChecked: (Int) -> Unit,
     onToggleGroupExpanded: (Int) -> Unit,
     onSelectMultiCandidate: (Int, PlaceCandidate) -> Unit,
-    onRegisterAccountClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize().background(EonjeColors.background)) {
@@ -213,12 +197,6 @@ private fun ResolveContent(
             )
         }
 
-        AccountRegistrationRow(
-            registeredUsername = uiState.registeredAccountUsername,
-            onRegisterClick = onRegisterAccountClick,
-            modifier = Modifier.padding(20.dp, 4.dp, 20.dp, 0.dp),
-        )
-
         FilledPillButton(
             text = if (uiState.isSaving) "저장 중…" else "확정하고 저장",
             icon = if (!uiState.isSaving) Icons.Filled.Check else null,
@@ -227,37 +205,6 @@ private fun ResolveContent(
                 .fillMaxWidth()
                 .padding(20.dp, 12.dp, 20.dp, 18.dp),
         )
-    }
-}
-
-@Composable
-private fun AccountRegistrationRow(
-    registeredUsername: String?,
-    onRegisterClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (registeredUsername != null) {
-        Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.Check, contentDescription = null, tint = EonjeColors.success, modifier = Modifier.size(14.dp))
-            Text("@$registeredUsername 등록됨", style = Typography.labelMedium, color = EonjeColors.textMuted)
-        }
-    } else {
-        Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .clickable(onClick = onRegisterClick)
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = null, tint = EonjeColors.accent, modifier = Modifier.size(16.dp))
-            Text("이 계정 등록하기", style = Typography.labelMedium, color = EonjeColors.accent)
-        }
     }
 }
 
@@ -438,7 +385,6 @@ private fun ResolveScreenPreview() {
             onToggleGroupChecked = {},
             onToggleGroupExpanded = {},
             onSelectMultiCandidate = { _, _ -> },
-            onRegisterAccountClick = {},
         )
     }
 }
@@ -451,7 +397,6 @@ private fun ResolveScreenMultiPreview() {
             uiState = ResolveUiState(
                 subtitle = "3일 전 저장",
                 isMultiMode = true,
-                registeredAccountUsername = "seongsu.list",
                 multiGroups = listOf(
                     MultiCandidateGroup(
                         extractionIndex = 0,
@@ -482,7 +427,6 @@ private fun ResolveScreenMultiPreview() {
             onToggleGroupChecked = {},
             onToggleGroupExpanded = {},
             onSelectMultiCandidate = { _, _ -> },
-            onRegisterAccountClick = {},
         )
     }
 }

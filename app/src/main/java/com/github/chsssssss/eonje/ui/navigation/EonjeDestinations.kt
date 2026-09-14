@@ -4,7 +4,6 @@ object EonjeDestinations {
     const val HOME = "home"
     const val INBOX = "inbox"
     const val SETTINGS = "settings"
-    const val ACCOUNTS = "accounts"
     const val RESOLVE_POST_ID_ARG = "postId"
     const val RESOLVE = "resolve/{$RESOLVE_POST_ID_ARG}"
     const val PLACE_DETAIL_ID_ARG = "placeId"

@@ -7,7 +7,8 @@
 - **핵심 흐름**: 인스타에서 공유 버튼 → URL만 즉시 저장(화면 없음) → 나중에 앱에서 가게 확정 → 외식할 때 지도에서 꺼내 봄
 - **설계 원칙 1**: 저장은 절대 실패하지 않는다. 가게 이름을 못 찾아도, 네트워크가 끊겨도 URL은 저장된다
 - **설계 원칙 2**: 자동 인식(캡션 파싱)은 최적화이지 필수 기능이 아니다. 실패해도 앱은 정상 동작한다
-- **설계 원칙 3**: 서버 없이, 사용자가 늘어도 개발자 비용이 비례해서 늘지 않는 구조로 간다. 캡션 파싱은 Firebase AI Logic(Gemini 무료 티어)과 온디바이스 Gemini Nano를 쓰고, 지도 검색은 클라이언트에서 직접 호출한다
+- **설계 원칙 3**: 자체 서버는 두지 않고, 사용자가 늘어도 개발자 비용이 비례해서 늘지 않는 구조로 간다. 캡션 파싱은 Firebase AI Logic(Gemini 무료 티어)과 온디바이스 Gemini Nano를 쓰고, 지도 검색은 클라이언트에서 직접 호출한다. 유일한 예외는 Firebase Cloud Functions 함수 하나(게시물 URL로 계정명·캡션을 Apify로 대신 조회) — 직접 운영하는 서버는 아니지만 커스텀 백엔드 코드가 있다는 점은 예외이며, Apify 토큰을 앱에 내장하지 않기 위한 최소한의 게이트웨이다
+- **설계 원칙 4**: 앱의 핵심 동작은 "인스타 보다가 마음에 드는 것만 공유"다. 계정을 통째로 팔로우해서 전부 자동 수집하는 기능(과거 F3)은 이 사용 패턴과 안 맞아서 걷어냈다 — 자세한 배경은 "개발 단계" 5단계 참고
 
 ## 프로젝트 정보
 
@@ -25,16 +26,16 @@
 | 아키텍처 | MVVM + UDF, StateFlow 기반 단일 UiState |
 | DI | Hilt |
 | 로컬 DB | Room |
-| 네트워크 | Retrofit + OkHttp + kotlinx.serialization (Instagram, 카카오 로컬) |
+| 네트워크 | Retrofit + OkHttp + kotlinx.serialization (카카오 로컬) + Firebase Functions(계정명·캡션 조회) |
 | 캡션 파싱 (AI) | 지원 기기는 ML Kit GenAI(Gemini Nano) 온디바이스 우선 시도, 아니면 Firebase AI Logic(Gemini Flash 무료 티어, App Check 필수)으로 폴백 |
 | 비동기 | Coroutines + Flow |
 | 백그라운드 | WorkManager |
 | 지도 | 카카오맵 SDK (카카오 로컬 API와 좌표계 통일) |
 | 네비게이션 | Navigation Compose |
 | 이미지 | Coil |
-| 백엔드 | 없음. 모든 API는 클라이언트에서 직접 호출 (아래 "비용·서버 구조" 참고) |
+| 백엔드 | 원칙적으로 없음. 모든 API는 클라이언트에서 직접 호출하되, 게시물 계정명·캡션 조회만 Firebase Cloud Functions 함수 하나(Apify 토큰 보관용 게이트웨이)를 거친다 (아래 "비용·서버 구조" 참고) |
 
-*캡션 파싱은 실기기(Galaxy Note9, API 29)에서 공유 → 파싱 → 카카오 검색 → 자동 확정까지 전 과정 검증 완료(2026-09-10). Firebase AI Logic은 App Check(디버그: Debug Provider, 릴리스: Play Integrity)가 없으면 요청 자체를 거부하므로 `EonjeApplication`에서 필수로 초기화한다.*
+*캡션 파싱은 실기기(Galaxy Note9, API 29)에서 공유 → Apify 캡션 조회 → Gemini 파싱 → 카카오 검색 → 자동 확정까지 전 과정 검증 완료(2026-09-12). Firebase AI Logic은 App Check(디버그: Debug Provider, 릴리스: Play Integrity)가 없으면 요청 자체를 거부하므로 `EonjeApplication`에서 필수로 초기화한다. Gemini는 Blaze(결제 계정 연결) 프로젝트에서 호출하면 무료 티어 대신 Prepay(선불) 결제로 전환돼버려서, Gemini 전용 프로젝트(`fir-gemini-706d3`, Spark 유지)를 Apify 게이트웨이 프로젝트(`wherewegoing-a5493`, Blaze)와 분리해뒀다 — 자세한 내용은 "비용·서버 구조" 참고.*
 
 ## 패키지 구조
 
@@ -43,7 +44,7 @@ com.github.chsssssss.eonje/
 ├─ di/                 Hilt 모듈
 ├─ data/
 │  ├─ local/           Room (Entity, Dao, Database)
-│  ├─ remote/          Retrofit (Instagram, Kakao) + Firebase AI Logic / ML Kit GenAI 클라이언트
+│  ├─ remote/          Retrofit(Kakao) + Firebase Functions/AI Logic 앱 이름 상수
 │  ├─ repository/      Repository 구현체
 │  └─ worker/          WorkManager
 ├─ domain/
@@ -55,7 +56,7 @@ com.github.chsssssss.eonje/
 │  ├─ inbox/
 │  ├─ resolve/         정리 화면 (단일/다중 모드)
 │  ├─ placedetail/
-│  ├─ accounts/
+│  ├─ settings/        지금은 빈 자리만 유지 (5단계 참고)
 │  └─ theme/
 └─ share/              ShareReceiverActivity
 ```
@@ -105,35 +106,13 @@ enum class ResolveStatus {
     PENDING,        // 저장 직후, 매칭 대기
     RESOLVED,       // 장소 확정
     NEEDS_REVIEW,   // 후보 여러 개 또는 다중 장소 — 사용자 선택 필요
-    UNRESOLVED      // 캐시 미스, 파싱 실패, 미등록 계정 — 구체적인 원인은 UnresolvedReason 참고
+    UNRESOLVED      // 캡션 조회·파싱 실패 — 구체적인 원인은 UnresolvedReason 참고
 }
 
-/** UNRESOLVED가 "계정을 등록해야 하는지" "계정은 맞는데 장소를 못 찾은 건지"를 인박스에서 구분해 보여주는 데 쓴다. */
 enum class UnresolvedReason {
-    ACCOUNT_NOT_FOUND,  // shortcode가 등록된 계정 어디에도 없음 — 계정 등록/재동기화 필요
-    PLACE_NOT_FOUND,    // 계정은 확인됐지만 캡션 파싱·카카오 검색에서 장소를 못 찾음
+    PLACE_NOT_FOUND,    // 캡션 파싱·카카오 검색에서 장소를 못 찾음 (비공개 게시물 등으로 캡션 자체를 못 가져온 경우 포함)
     NETWORK_ERROR,      // 재시도 한도 초과로 포기
 }
-
-@Entity(tableName = "watched_accounts")
-data class WatchedAccountEntity(
-    @PrimaryKey val username: String,
-    val igUserId: String,
-    val profileImageUrl: String?,
-    val lastSyncedAt: Long?
-)
-
-@Entity(tableName = "cached_media")
-data class CachedMediaEntity(
-    @PrimaryKey val shortcode: String,
-    val username: String,
-    val caption: String?,
-    val permalink: String,
-    val mediaType: String,           // IMAGE, VIDEO, CAROUSEL_ALBUM
-    val mediaUrls: List<String>,     // TypeConverter로 직렬화, 캐리셀은 순서대로
-    val timestamp: Long,
-    val cachedAt: Long
-)
 
 @Entity(tableName = "tags")
 data class TagEntity(
@@ -149,7 +128,7 @@ data class PlaceTagCrossRef(
 )
 ```
 
-인덱스: `SavedPostEntity.shortcode`, `CachedMediaEntity.shortcode`, `PlaceEntity.kakaoPlaceId`
+인덱스: `SavedPostEntity.shortcode`, `PlaceEntity.kakaoPlaceId`
 
 ## 화면 구성
 
@@ -157,11 +136,10 @@ data class PlaceTagCrossRef(
 |---|---|
 | ShareReceiverActivity | UI 없음. 인텐트 수신 → 토스트 → finish() |
 | HomeScreen | 지도 + 리스트 토글. 태그 필터 칩 |
-| InboxScreen | 미확정 게시물 카드 목록. 미등록 계정 배너 + 카드별 미확정 사유 칩("계정 미등록" vs "직접 찾기") |
-| ResolveScreen | 단일/다중 모드. 위쪽 원본, 아래쪽 검색 |
-| PlaceDetailScreen | 장소 상세 + 관련 게시물 목록 |
-| AccountsScreen | 맛집 계정 등록·관리 |
-| SettingsScreen | 동기화 주기, 토큰 상태 |
+| InboxScreen | 미확정 게시물 카드 목록. 카드별 "후보 N곳" / "직접 찾기" 칩 |
+| ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색 |
+| PlaceDetailScreen | 장소 상세 + 관련 게시물 목록(원본 열기 가능) |
+| SettingsScreen | 지금은 빈 자리만 유지 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어냄) |
 
 하단 네비게이션 3탭: 홈 / 인박스(배지) / 설정
 
@@ -175,54 +153,29 @@ data class PlaceTagCrossRef(
 - 쿼리 파라미터(`?igsh=...`) 제거
 - Room에 SavedPost 생성 (동기 처리, 밀리초 단위)
 - 이후 WorkManager로 위임
-- 미등록 계정이어도 저장은 정상 진행. UNRESOLVED로 인박스에 보관
-- 등록 유도는 다음 앱 실행 시 인박스 상단 배너로
 
 ### F2. 장소 추출 및 매칭 (WorkManager)
 
-1. shortcode → 로컬 캐시(CachedMedia) 조회
-2. 미스 → 등록된 계정이면 그 계정 게시물을 커서가 끝날 때까지 페이지 넘겨가며(계정 전체) shortcode를 찾아본다(오래된 게시물 대응). 그래도 못 찾거나 미등록 계정이면 UNRESOLVED 종료
-3. 캡션 파싱 시도 순서:
+1. **계정명·캡션 조회** — Firebase Cloud Function `fetchInstagramMeta` → Apify `apify/instagram-scraper` 액터로 게시물 URL만으로 캡션 원문(안 잘림) + 대표 이미지 URL을 받는다. 계정을 등록하거나 추적하지 않는다 — 이 게시물 하나를 푸는 데 그걸로 충분하다
+2. 실패(비공개 게시물, Apify 오류, Cloud Run 일시 장애 등) → `MatchPostResult.Retry`로 WorkManager 지수 백오프 재시도. 재시도 한도(5회) 넘기면 `UNRESOLVED(NETWORK_ERROR)`
+3. 캡션이 비어있으면 `UNRESOLVED(PLACE_NOT_FOUND)`
+4. 캡션 파싱 시도 순서:
    a. 기기가 ML Kit GenAI(Gemini Nano) 지원 시 온디바이스로 우선 시도 — 비용 0, 네트워크 불필요
-   b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini Flash 호출 (무료 티어, App Check 필요)
+   b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini Flash 호출 (무료 티어, App Check 필요, Gemini 전용 프로젝트 사용)
    c. 두 경로 모두 `@Generable` 구조화 출력으로 `[{상호명, 지역, 메뉴}]` 배열 응답 받기
-4. 결과 없으면 2차 파싱: 캡션 + 이미지 함께 전달 (캐리셀 앞 3장). 이미지 입력은 온디바이스보다 Firebase AI Logic(Gemini) 경로가 안정적 — 비전은 클라우드 우선
-5. 각 항목 카카오 로컬 검색 (클라이언트에서 직접 호출, 앱 서명 기반 키 제한)
-6. 상태 결정:
+5. 결과 없으면 2차 파싱: 캡션 + 대표 이미지 함께 전달. 이미지 입력은 온디바이스보다 Firebase AI Logic(Gemini) 경로가 안정적 — 비전은 클라우드 우선
+6. 각 항목 카카오 로컬 검색 (클라이언트에서 직접 호출, 앱 서명 기반 키 제한)
+7. 상태 결정:
    - 추출 1건 + 검색 1건 → 자동 확정 (RESOLVED)
    - 추출 2건 이상 → 무조건 NEEDS_REVIEW (다중 모드)
    - 검색 결과 다수 → NEEDS_REVIEW (후보 최대 5개)
-   - shortcode를 등록된 계정 어디서도 못 찾음(2번) → UNRESOLVED(`ACCOUNT_NOT_FOUND`)
    - 캡션 파싱·카카오 검색 실패 → UNRESOLVED(`PLACE_NOT_FOUND`)
    - 재시도 한도 초과 → UNRESOLVED(`NETWORK_ERROR`)
-7. 확정 시 알림: "○○식당 저장됨"
+8. 확정 시 알림: "○○식당 저장됨"
 
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
 
-*3단계 참고: 위 1~7번 전부 코드로 구현돼 있고 Firebase 프로젝트도 생성돼, 온디바이스(ML Kit GenAI) 미지원 기기나 이미지 포함 2차 파싱도 Firebase AI Logic 경로로 정상 동작한다.*
-
-### F3. 계정 등록 및 동기화
-
-- Business Discovery API 사용
-- username 입력 → 프로페셔널 계정 확인 → 등록
-- WorkManager: 1일 1회, NetworkType.UNMETERED + requiresCharging
-- 계정당 최근 25건 유지 — `media.limit(50)`은 캐러셀·비디오 하위 필드까지 한 번에 요청하면 Meta가 `"Please reduce the amount of data you're asking for"`(에러 코드 1)로 거부해서 낮춤. 25건 기준 응답이 10초 넘게 걸릴 수 있어 Instagram Retrofit 클라이언트만 타임아웃을 30초로 늘려뒀음(`NetworkModule`)
-- 등록 후 UNRESOLVED(`ACCOUNT_NOT_FOUND`) 게시물 전체를 매칭 재시도 — 최근 25건 캐시에 없는 오래된 게시물도 있을 수 있어 계정으로 스코핑하지 않고 전부 재시도하며, 실제 계정 매칭(어느 계정 게시물인지)은 F2의 커서 전체 탐색이 담당한다. 계정 등록 화면이 이 재매칭을 기다리지 않도록, Business Discovery 확인이 끝나는 즉시 등록을 완료하고 재매칭은 게시물별로 CaptionParsingWorker에 위임한다(F2와 동일 경로). 밀린 게시물이 많아도 등록 자체는 빠르고, 진행 상황은 인박스의 "정리 중" 칩으로 보인다.
-
-### Business Discovery 엔드포인트
-
-```
-GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
-  ?fields=business_discovery.username({TARGET})
-          {media.limit(25){permalink,caption,timestamp,media_url,
-                           media_type,children{media_url,media_type}}}
-  &access_token={TOKEN}
-```
-
-필요 권한: instagram_basic, instagram_manage_insights, pages_read_engagement
-토큰: local.properties에 보관, BuildConfig로 주입. 절대 커밋 금지. 60일마다 갱신.
-
-**규모 확장 시 병목** — 조회당하는 계정(맛집 계정)만 프로페셔널이면 되고, 조회 주체는 개발자 본인 토큰 하나로 충분하다. 즉 사용자가 각자 인스타 로그인을 할 필요가 없다. 다만 이 토큰 하나에 시간당 호출 제한이 걸리므로, 사용자가 많아지면 전체 동기화가 이 한도에 묶인다. 비용 문제가 아니라 속도 문제이며, 이 기능이 막혀도 F1·F2는 정상 동작하므로 규모가 커지면 이 기능만 잠시 끄고 App Review(Advanced Access) 통과 후 다시 켜는 방식으로 대응한다.
+*실기기 검증 완료(2026-09-12): 공유 → Apify 캡션 조회 → Gemini 추출 → 카카오 검색 → 자동 확정까지 계정 등록 없이 전 과정 동작 확인.*
 
 ## 예외 처리 원칙
 
@@ -230,41 +183,44 @@ GET https://graph.facebook.com/v25.0/{MY_IG_USER_ID}
 
 | 상황 | 처리 |
 |---|---|
-| 미등록 계정 공유 | UNRESOLVED(`ACCOUNT_NOT_FOUND`) 저장, 인박스 배너 + 카드별 "계정 미등록" 칩으로 안내 |
-| shortcode 캐시 미스(등록 계정 포함 못 찾음) | UNRESOLVED(`ACCOUNT_NOT_FOUND`), 조용히 인박스로 |
+| 캡션 조회 실패(비공개 게시물, Apify/Cloud Run 오류 등) | WorkManager 지수 백오프 재시도, 한도 넘기면 UNRESOLVED(`NETWORK_ERROR`) |
 | 캡션에 상호명 없음 | 이미지 포함 2차 파싱 재시도 |
 | 추출 2건 이상 | NEEDS_REVIEW, 다중 체크박스 화면 |
-| media_url 만료 | 이미지 파싱 생략, 캡션 결과만 사용 |
 | 릴스 리스트형 | 영상 파싱 불가, UNRESOLVED |
 | 중복 공유 | 기존 레코드 유지, 신규 생성 안 함 |
 | 이미 저장된 가게 | kakaoPlaceId 일치 시 게시물만 연결 |
 | 네트워크 없음 | WorkManager 지수 백오프 재시도 |
-| 토큰 만료 | 앱 내 배너, 동기화 중단. 공유 수신은 정상 동작 |
 
 ## 비용·서버 구조
 
-플레이스토어 공개 출시가 목표이지만, 사용자가 늘어도 개발자가 사용량 비례 비용을 지지 않는 구조로 설계한다. **서버를 두지 않는다.**
+플레이스토어 공개 출시가 목표이지만, 사용자가 늘어도 개발자가 사용량 비례 비용을 지지 않는 구조로 설계한다. **자체 서버는 두지 않는다** (Apify 게이트웨이용 Cloud Functions 함수 하나는 예외 — 아래 참고).
 
 | 기능 | 방식 | 비용 |
 |---|---|---|
-| 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini Flash 무료 티어 호출 (App Check 필수) | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
+| 계정명·캡션 조회 (F2) | Firebase Cloud Function `fetchInstagramMeta`(App Check 필수) → Apify `apify/instagram-scraper` 액터. 실패하면 WorkManager가 재시도하고, 그래도 안 되면 UNRESOLVED로 조용히 종료 | Apify 무료 티어 월 $5 크레딧 ≈ 1,850건, 그 이상은 건당 $0.0027 (2026-09 기준). 캐시 없이 공유할 때마다 호출됨 |
+| 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini Flash 무료 티어 호출 (App Check 필수, Gemini 전용 프로젝트) | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
 | 카카오 로컬 검색 | 클라이언트에서 REST API 직접 호출, 카카오 개발자 콘솔에서 앱 서명(SHA) 기반 키 제한 설정 | 카카오 무료 쿼터 내 |
-| Business Discovery | 개발자 본인 토큰으로 클라이언트가 직접 호출 (키는 앱에 두지 않고 필요 최소 범위로 관리 검토) | 무료. 단 속도 제한 있음 (위 참고) |
+| Cloud Functions(Apify 게이트웨이) 인프라 | Cloud Run 2세대 위에서 실행. `wherewegoing-a5493`은 Secret Manager(Apify 토큰 보관)를 쓰려고 Blaze로 전환함 | Blaze 무료 티어: 월 200만 건 호출, 40만 GB-초, 5GB 아웃바운드까지 무료. 컨테이너 이미지는 배포 시 1일 뒤 자동 삭제 정책으로 스토리지 비용 억제 |
 
-**API 키를 앱에 직접 내장하지 않는 이유** — APK는 디컴파일 가능해서, 내장된 키는 노출되면 누구나 그 키로 무제한 요청을 보낼 수 있고 비용은 키 소유자에게 청구된다. Firebase AI Logic은 이 문제를 게이트웨이 구조로 해결해서, 서버를 직접 짜지 않아도 클라이언트에서 안전하게 Gemini를 호출할 수 있다. 카카오는 앱 서명 기반 키 제한으로 같은 문제를 완화한다.
+**API 키를 앱에 직접 내장하지 않는 이유** — APK는 디컴파일 가능해서, 내장된 키는 노출되면 누구나 그 키로 무제한 요청을 보낼 수 있고 비용은 키 소유자에게 청구된다. Firebase AI Logic은 이 문제를 게이트웨이 구조로 해결해서, 서버를 직접 짜지 않아도 클라이언트에서 안전하게 Gemini를 호출할 수 있다. 카카오는 앱 서명 기반 키 제한으로, Apify 토큰은 Firebase Cloud Function(Secret Manager) 뒤에 숨겨서 같은 문제를 해결한다.
 
-**무료 티어를 넘어서면** — Gemini 무료 티어 일일 한도(1500건)를 앱 전체 사용량이 넘으면 그 시점에 Firebase 프로젝트를 유료(Blaze) 플랜으로 전환하고 사용량만큼만 과금되는 구조로 넘어간다. 지금 규모에서는 해당 사항이 아니며, 이 한도에 근접하는지는 출시 후 모니터링으로 판단한다.
+**Gemini는 결제 계정과 분리된 프로젝트에 둔다** — Firebase AI Logic(Gemini Developer API)의 진짜 무료 티어는 결제 계정이 전혀 연결되지 않은 프로젝트에서만 유지된다. 프로젝트가 한 번 "Prepay(선불)" 상태로 전환되면 무료 티어로 자동 복귀가 안 되고 선불 잔액(최소 $10)이 있어야만 호출된다. 그래서 Apify 게이트웨이(Secret Manager 때문에 Blaze 필수인 `wherewegoing-a5493`)와 Gemini(`fir-gemini-706d3`, Spark 유지)를 완전히 다른 프로젝트로 분리했다. `EonjeApplication`에서 Gemini 프로젝트를 기본(default) FirebaseApp으로, `wherewegoing-a5493`을 이름 있는(named) FirebaseApp(`WHEREWEGOING_FIREBASE_APP_NAME`)으로 각각 초기화하고 App Check도 프로젝트별로 따로 설치한다 — Firebase AI Logic SDK가 이름과 무관하게 "기본 FirebaseApp"만 찾기 때문에 이 순서가 중요하다(`data/remote/FirebaseApps.kt` 참고).
 
-**Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외. (과거엔 Claude Haiku로 구현했었으나 이 원칙에 따라 걷어내고 온디바이스/Firebase AI Logic으로 교체했다.)
+**Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외.
 
-**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). `EonjeApplication.initFirebaseAppCheck()`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 설치한다. Debug Provider의 디바이스별 토큰은 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다 필요한 일회성 작업.
+**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다.
+
+**Apify 토큰과 Cloud Function 배포** — `functions/index.js`가 Apify API 토큰을 쥐고 있어서 앱에는 절대 내장하지 않는다. 배포 전 1회 `firebase functions:secrets:set APIFY_TOKEN`으로 토큰을 등록하고, 이후 `firebase deploy --only functions`로 배포한다(둘 다 `firebase login` 후 CLI에서 직접 실행 — 에이전트가 대신 실행할 수 없다). `firebase.json`/`.firebaserc`가 프로젝트(`wherewegoing-a5493`)를 가리키도록 이미 세팅돼 있다.
+
+**Blaze 전환 시 흔한 함정** — 실제로 겪은 문제들, 순서대로:
+1. Secret Manager는 Blaze 플랜이 있어야 활성화된다 (Spark에서는 `firebase functions:secrets:set` 자체가 막힘)
+2. Firebase Console의 "Generated spend cap"을 너무 낮게(예: $1) 잡아두면, 배포 시 드는 소소한 부수 비용(컨테이너 이미지 빌드·저장)만으로도 캡을 넘겨서 결제가 자동 비활성화된다 — `The request failed because billing is disabled for this project` 에러로 나타남. $5~10 정도로 올려두면 충분하다
+3. 프로젝트를 막 Blaze로 올리면 Cloud Run 인스턴스 할당량이 낮게(예: 5) 잡혀 있을 수 있다 — `The request was aborted because there was no available instance` 에러로 나타남. [할당량 콘솔](https://console.cloud.google.com/iam-admin/quotas)에서 해당 프로젝트의 Cloud Run 관련 할당량을 100 정도로 올리면 해결된다. 할당량은 상한선일 뿐 실제 비용과 무관하다
+4. Blaze로 전환한 프로젝트에서 Gemini API를 호출하면 무료 티어 대신 Prepay로 전환된다 — 위 "Gemini는 결제 계정과 분리된 프로젝트에 둔다" 참고
 
 ## 개발 단계
 
 ### 1단계 — 저장 파이프라인 (완료)
-
-Business Discovery 없이 동작하는 최소 흐름.
-이 단계만으로 실제로 쓸 수 있는 앱이 된다.
 
 - [x] 의존성 추가 (Room, Hilt, Navigation Compose, Coroutines, Retrofit)
 - [x] ShareReceiverActivity — 인텐트 수신, 토스트, finish()
@@ -279,17 +235,12 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] HomeScreen — 지도, 리스트 토글, 태그 필터
 - [x] PlaceDetailScreen
 
-### 3단계 — 자동 매칭 (App Review 병행) + 공개 출시 준비 (완료)
+### 3단계 — 자동 매칭 + 공개 출시 준비 (완료, 이후 5단계에서 구조 변경)
 
-- [x] WatchedAccountEntity, CachedMediaEntity Room 세팅
-- [x] AccountsScreen — 계정 등록 (+ ResolveScreen 지름길 버튼)
-- [x] Business Discovery 동기화 WorkManager
-- [x] 캡션 파싱 WorkManager 골격 — 캐시 조회 → 파싱 → 카카오 로컬 검색 → 상태 결정
+- [x] 캡션 파싱 WorkManager 골격 — 캡션 조회 → 파싱 → 카카오 로컬 검색 → 상태 결정
 - [x] ResolveScreen 다중 모드
 - [x] ML Kit GenAI(Gemini Nano) 온디바이스 지원 기기 분기 처리 — `FeatureStatus.AVAILABLE` 확인 후 시도, 안 되면 조용히 폴백
-- [x] 캡션 파싱을 Anthropic Claude API → 온디바이스 우선 / Firebase AI Logic 폴백으로 교체 — `CaptionParsingRepositoryImpl` 재작성 완료
-- [x] Firebase AI Logic SDK 연동(코드) — `google-services.json` 없이 `FirebaseOptions`로 기본 앱 직접 초기화, App Check(디버그/Play Integrity) 연동 포함
-- [x] Firebase 프로젝트 생성(Spark 무료 플랜) — `wherewegoing-a5493` 프로젝트 생성, `local.properties`에 `FIREBASE_PROJECT_ID`/`FIREBASE_APPLICATION_ID`/`FIREBASE_API_KEY` 채워 넣음, Vertex AI in Firebase API 활성화
+- [x] Firebase AI Logic SDK 연동 — `google-services.json` 없이 `FirebaseOptions`로 직접 초기화, App Check(디버그/Play Integrity) 연동 포함
 - [x] 카카오 개발자 콘솔에서 앱 서명 기반 키 제한 설정
 
 ### 3.5단계 — 이미지 파싱 (보류)
@@ -301,6 +252,24 @@ Business Discovery 없이 동작하는 최소 흐름.
 - [x] 위젯 — 인박스 정리 대기 개수를 보여주는 홈 화면 위젯
 - [x] 정리 알림 — 정리 안 된 게시물이 있으면 주기적으로(7일마다) 알림
 - [x] 오래된 미확정 항목 정리 제안 — 30일 넘은 항목을 인박스에서 일괄 삭제 제안
+
+### 5단계 — F3(계정 등록) 제거 + Apify 전환 (완료)
+
+3단계에서는 Instagram 계정을 등록해두면(Business Discovery API) 최근 25건을 로컬 캐시에 동기화해두고, 공유받은 shortcode가 캐시에 없으면 등록된 계정을 순서대로 페이지네이션 탐색하는 구조였다. 이 구조를 완전히 걷어내고 게시물 URL 하나로 바로 캡션을 얻는 방식으로 바꿨다.
+
+**왜 걷어냈나** — 두 가지 이유가 겹쳤다:
+1. Business Discovery는 계정명을 미리 알아야 호출 가능한데, 캐시 미스가 났을 때 그 게시물이 어느 계정 것인지 모르는 상태로 등록된 계정을 전부 순서대로 페이지네이션 탐색해야 했다. 계정이 여러 개면 느리고, Meta API가 특정 페이지에서 반복적으로 500을 반환하는 경우 그 계정 전체가 사실상 막히는 문제도 있었다.
+2. 더 근본적으로, 앱의 핵심 사용 패턴("인스타 보다가 마음에 드는 것만 공유")과 "계정을 통째로 팔로우해서 새 글을 전부 자동 수집"하는 F3의 설계가 안 맞았다. 사용자는 계정 단위가 아니라 게시물 단위로 관심을 표현한다.
+
+**무엇으로 대체했나** — Firebase Cloud Function `fetchInstagramMeta`가 Apify `apify/instagram-scraper`를 호출해서, 게시물 URL 하나만으로 계정명 없이도 캡션 원문(안 잘림)과 대표 이미지를 바로 받는다. 계정을 등록하거나 추적하지 않는다 — "이 계정을 팔로우해서 새 글도 자동으로 받고 싶다"는 요구 자체가 없다고 판단했다.
+
+- [x] `fetchInstagramMeta` Cloud Function 작성·배포 (Apify 게이트웨이, App Check 보호)
+- [x] `InstagramMetaLookupRepository` 추가, `MatchPostUseCase`를 Apify 단일 경로로 단순화
+- [x] Gemini 전용 Firebase 프로젝트(`fir-gemini-706d3`) 분리 — Blaze 전환 시 Prepay로 빠지는 문제 회피
+- [x] WatchedAccountEntity/CachedMediaEntity, Business Discovery API/Repository, AccountsScreen, BusinessDiscoverySyncWorker, RegisterAccountUseCase, TokenStatusStore 전부 삭제
+- [x] `UnresolvedReason.ACCOUNT_NOT_FOUND` 제거, Inbox의 미등록 계정 배너/칩 제거
+- [x] SettingsScreen을 빈 자리로 축소 (계정 관리·동기화 주기·토큰 상태가 전부 없어짐 — 탭 구조는 유지)
+- [x] 실기기 전 과정 검증 완료(2026-09-12)
 
 ## 코딩 컨벤션
 

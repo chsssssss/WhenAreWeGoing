@@ -1,6 +1,5 @@
 package com.github.chsssssss.eonje.domain.usecase
 
-import com.github.chsssssss.eonje.data.local.CachedMediaEntity
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
@@ -8,14 +7,12 @@ import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.notification.PlaceSavedNotifier
-import com.github.chsssssss.eonje.domain.repository.CachedMediaRepository
 import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
-import com.github.chsssssss.eonje.domain.repository.InstagramBusinessDiscoveryRepository
+import com.github.chsssssss.eonje.domain.repository.InstagramMetaLookupRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
-import com.github.chsssssss.eonje.domain.repository.WatchedAccountRepository
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.UUID
@@ -31,14 +28,13 @@ sealed interface MatchPostResult {
 }
 
 /**
- * F2: shortcode 캐시 조회 → 캡션(+이미지) LLM 파싱 → 카카오 검색 → 상태 결정.
- * 네트워크 실패는 [MatchPostResult.Retry]로 재시도를 요청하고, 그 외 실패는 UNRESOLVED로 조용히 종료한다.
+ * F2: 게시물 URL → (Firebase Function `fetchInstagramMeta` → Apify) 캡션 조회 → LLM 파싱 →
+ * 카카오 검색 → 상태 결정. 네트워크 실패는 [MatchPostResult.Retry]로 재시도를 요청하고,
+ * 그 외 실패는 UNRESOLVED로 조용히 종료한다.
  */
 class MatchPostUseCase @Inject constructor(
     private val savedPostRepository: SavedPostRepository,
-    private val cachedMediaRepository: CachedMediaRepository,
-    private val watchedAccountRepository: WatchedAccountRepository,
-    private val discoveryRepository: InstagramBusinessDiscoveryRepository,
+    private val metaLookupRepository: InstagramMetaLookupRepository,
     private val captionParsingRepository: CaptionParsingRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val placeRepository: PlaceRepository,
@@ -47,21 +43,18 @@ class MatchPostUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(postId: String): MatchPostResult {
         val post = savedPostRepository.findById(postId) ?: return MatchPostResult.Done
-        val shortcode = post.shortcode ?: return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
 
-        val cached = cachedMediaRepository.findByShortcode(shortcode)
-            ?: when (val fetch = lazyFetchFromWatchedAccounts(shortcode)) {
-                is LazyFetchResult.Found -> fetch.entity
-                LazyFetchResult.Retry -> return MatchPostResult.Retry
-                LazyFetchResult.NotFound -> return unresolved(postId, UnresolvedReason.ACCOUNT_NOT_FOUND)
-            }
-        val caption = cached.caption
+        val metaResult = metaLookupRepository.fetchMeta(post.instagramUrl)
+        if (metaResult.isFailure) return MatchPostResult.Retry
+        val meta = metaResult.getOrNull() ?: return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
+        val caption = meta.caption
         if (caption.isNullOrBlank()) return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
+        val mediaUrls = listOfNotNull(meta.imageUrl)
 
         savedPostRepository.updateExtraction(
             id = postId,
             caption = caption,
-            thumbnailUrl = cached.mediaUrls.firstOrNull(),
+            thumbnailUrl = mediaUrls.firstOrNull(),
             extractedCount = 0,
         )
 
@@ -70,9 +63,9 @@ class MatchPostUseCase @Inject constructor(
         if (firstPass.isRetryableFailure()) return MatchPostResult.Retry
         var extracted = firstPass.getOrNull().orEmpty()
 
-        // 2차 파싱: 결과 없고 이미지가 있으면(영상 제외) 이미지 포함 재시도
-        if (extracted.isEmpty() && cached.mediaUrls.isNotEmpty() && cached.mediaType != "VIDEO") {
-            val secondPass = captionParsingRepository.extractPlaces(caption, cached.mediaUrls)
+        // 2차 파싱: 결과 없고 이미지가 있으면 이미지 포함 재시도
+        if (extracted.isEmpty() && mediaUrls.isNotEmpty()) {
+            val secondPass = captionParsingRepository.extractPlaces(caption, mediaUrls)
             if (secondPass.isRetryableFailure()) return MatchPostResult.Retry
             extracted = secondPass.getOrNull().orEmpty()
         }
@@ -82,15 +75,18 @@ class MatchPostUseCase @Inject constructor(
         savedPostRepository.updateExtraction(
             id = postId,
             caption = caption,
-            thumbnailUrl = cached.mediaUrls.firstOrNull(),
+            thumbnailUrl = mediaUrls.firstOrNull(),
             extractedCount = extracted.size,
         )
 
         val searched = mutableListOf<Pair<ExtractedPlace, List<PlaceCandidate>>>()
+        var usedLooseSearch = false
         for (place in extracted) {
             val result = searchCandidates(place)
             if (result.isRetryableFailure()) return MatchPostResult.Retry
-            searched += place to result.getOrNull().orEmpty()
+            val outcome = result.getOrNull()
+            if (outcome?.isLoose == true) usedLooseSearch = true
+            searched += place to outcome?.candidates.orEmpty()
         }
         if (searched.all { (_, candidates) -> candidates.isEmpty() }) {
             return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
@@ -101,7 +97,9 @@ class MatchPostUseCase @Inject constructor(
             val candidates = searched.first().second
             when {
                 candidates.isEmpty() -> return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
-                candidates.size == 1 -> {
+                // 느슨한 검색(상호명만)으로 건진 결과는 같은 브랜드의 다른 지점일 수 있어서
+                // 딱 1건이어도 자동 확정하지 않고 사용자에게 확인받는다.
+                candidates.size == 1 && !usedLooseSearch -> {
                     autoResolve(postId, candidates.first())
                     return MatchPostResult.Done
                 }
@@ -117,31 +115,23 @@ class MatchPostUseCase @Inject constructor(
         unresolved(postId, UnresolvedReason.NETWORK_ERROR)
     }
 
-    /**
-     * 평소 캐시(계정당 최근 25건)에 없는 오래된 게시물을 shortcode로 찾는다.
-     * 등록된 계정을 순서대로 뒤져보다가 처음 찾은 곳에서 멈춘다.
-     */
-    private suspend fun lazyFetchFromWatchedAccounts(shortcode: String): LazyFetchResult {
-        for (account in watchedAccountRepository.getAll()) {
-            val result = discoveryRepository.findMediaByShortcode(account.username, shortcode)
-            if (result.isRetryableFailure()) return LazyFetchResult.Retry
-            val media = result.getOrNull() ?: continue
-            cachedMediaRepository.cacheSingle(account.username, media)
-            val entity = cachedMediaRepository.findByShortcode(shortcode) ?: continue
-            return LazyFetchResult.Found(entity)
+    /** [isLoose]는 지역까지 맞춘 정확한 결과가 아니라 상호명만으로 느슨하게 건진 결과라는 표시다. */
+    private data class SearchOutcome(val candidates: List<PlaceCandidate>, val isLoose: Boolean)
+
+    private suspend fun searchCandidates(place: ExtractedPlace): Result<SearchOutcome> {
+        val region = place.region?.takeIf { it.isNotBlank() }
+        val precise = kakaoLocalRepository.searchPlaces(listOfNotNull(region, place.name).joinToString(" "))
+        if (region == null || precise.isFailure || precise.getOrNull()?.isNotEmpty() == true) {
+            return precise.map { SearchOutcome(it, isLoose = false) }
         }
-        return LazyFetchResult.NotFound
-    }
 
-    private sealed interface LazyFetchResult {
-        data class Found(val entity: CachedMediaEntity) : LazyFetchResult
-        data object NotFound : LazyFetchResult
-        data object Retry : LazyFetchResult
-    }
-
-    private suspend fun searchCandidates(place: ExtractedPlace): Result<List<PlaceCandidate>> {
-        val query = listOfNotNull(place.region, place.name).joinToString(" ")
-        return kakaoLocalRepository.searchPlaces(query)
+        // 지역과 상호명을 전부 이어붙이면("춘천시 후평동 반마리닭국수 후평점") 카카오가 0건을 주는 일이 잦다.
+        // 상호명만으로 다시 찾되, 같은 이름의 다른 도시 가게가 딸려오지 않도록 지역명으로 걸러낸다.
+        val regionKeyword = region.substringBefore(' ')
+        return kakaoLocalRepository.searchPlaces(place.name)
+            .map { candidates ->
+                SearchOutcome(candidates.filter { it.address.contains(regionKeyword) }, isLoose = true)
+            }
     }
 
     // IOException(네트워크 자체 실패)뿐 아니라, 서버 쪽 일시 오류(5xx)·호출 제한(429)도 재시도 대상으로 본다 —

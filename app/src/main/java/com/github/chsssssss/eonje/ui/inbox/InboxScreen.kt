@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -37,8 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.github.chsssssss.eonje.domain.model.UnresolvedReason
-import com.github.chsssssss.eonje.ui.components.AccountNotFoundChip
 import com.github.chsssssss.eonje.ui.components.CandidateStatusChip
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
@@ -50,7 +47,6 @@ import com.github.chsssssss.eonje.ui.theme.Typography
 @Composable
 fun InboxScreen(
     onItemClick: (String) -> Unit,
-    onNavigateToAccounts: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InboxViewModel = hiltViewModel(),
 ) {
@@ -58,7 +54,6 @@ fun InboxScreen(
     InboxContent(
         uiState = uiState,
         onItemClick = onItemClick,
-        onNavigateToAccounts = onNavigateToAccounts,
         onCleanupStaleClick = viewModel::onCleanupStaleClick,
         onConfirmCleanup = viewModel::onConfirmCleanup,
         onDismissCleanupDialog = viewModel::onDismissCleanupDialog,
@@ -74,7 +69,6 @@ fun InboxScreen(
 private fun InboxContent(
     uiState: InboxUiState,
     onItemClick: (String) -> Unit,
-    onNavigateToAccounts: () -> Unit,
     onCleanupStaleClick: () -> Unit,
     onConfirmCleanup: () -> Unit,
     onDismissCleanupDialog: () -> Unit,
@@ -95,13 +89,6 @@ private fun InboxContent(
                 text = if (uiState.items.isEmpty()) "정리할 게시물이 없어요" else "${uiState.items.size}개 정리 대기",
                 style = Typography.bodyMedium,
                 color = EonjeColors.textMuted,
-            )
-        }
-
-        if (uiState.showUnregisteredAccountBanner) {
-            UnregisteredAccountBanner(
-                onClick = onNavigateToAccounts,
-                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
             )
         }
 
@@ -152,27 +139,6 @@ private fun InboxContent(
                     .padding(20.dp, 16.dp, 20.dp, 18.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun UnregisteredAccountBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(EonjeColors.surfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.Warning, contentDescription = null, tint = EonjeColors.warning)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("자동으로 정리되지 않는 게시물이 있어요", style = Typography.bodyMedium, color = EonjeColors.textPrimary)
-            Text("맛집 계정을 등록하면 다음부터 자동으로 매칭돼요", style = Typography.labelSmall, color = EonjeColors.textMuted)
-        }
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = EonjeColors.iconMuted)
     }
 }
 
@@ -281,10 +247,10 @@ private fun InboxCard(item: InboxItem, onClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text(item.relativeTime, style = Typography.bodySmall, color = EonjeColors.textMuted)
-            when {
-                item.isProcessing -> ProcessingStatusChip()
-                item.unresolvedReason == UnresolvedReason.ACCOUNT_NOT_FOUND -> AccountNotFoundChip()
-                else -> CandidateStatusChip(candidateCount = item.extractedCount)
+            if (item.isProcessing) {
+                ProcessingStatusChip()
+            } else {
+                CandidateStatusChip(candidateCount = item.extractedCount)
             }
         }
         Icon(
@@ -317,10 +283,8 @@ private fun InboxScreenPreview() {
                     InboxItem("2", "https://instagram.com/p/def/", "3일 전"),
                 ),
                 isLoading = false,
-                showUnregisteredAccountBanner = true,
             ),
             onItemClick = {},
-            onNavigateToAccounts = {},
             onCleanupStaleClick = {},
             onConfirmCleanup = {},
             onDismissCleanupDialog = {},
@@ -338,7 +302,6 @@ private fun InboxScreenEmptyPreview() {
         InboxContent(
             uiState = InboxUiState(isLoading = false),
             onItemClick = {},
-            onNavigateToAccounts = {},
             onCleanupStaleClick = {},
             onConfirmCleanup = {},
             onDismissCleanupDialog = {},

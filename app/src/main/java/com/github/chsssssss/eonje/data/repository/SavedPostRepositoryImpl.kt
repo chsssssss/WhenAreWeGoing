@@ -26,9 +26,6 @@ class SavedPostRepositoryImpl @Inject constructor(
     override suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int) =
         dao.updateExtraction(id, caption, thumbnailUrl, extractedCount)
 
-    override suspend fun findAccountNotFound(): List<SavedPostEntity> =
-        dao.findAccountNotFound()
-
     override suspend fun deleteByIds(ids: List<String>) = dao.deleteByIds(ids)
 
     override fun observeAll(): Flow<List<SavedPostEntity>> = dao.observeAll()

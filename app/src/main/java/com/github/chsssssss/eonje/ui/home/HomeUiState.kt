@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje.ui.home
 
 import com.github.chsssssss.eonje.data.local.TagEntity
+import com.github.chsssssss.eonje.domain.model.GeoPoint
 
 data class HomePlace(
     val id: String,
@@ -20,6 +21,8 @@ data class HomeUiState(
     val tags: List<TagEntity> = emptyList(),
     val selectedTagId: String? = null,
     val searchQuery: String = "",
+    val selectedPlaceId: String? = null,
+    val currentLocation: GeoPoint? = null,
 ) {
-    val highlighted: HomePlace? get() = places.firstOrNull()
+    val highlighted: HomePlace? get() = places.firstOrNull { it.id == selectedPlaceId }
 }

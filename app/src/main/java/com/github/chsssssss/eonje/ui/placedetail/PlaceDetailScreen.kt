@@ -1,5 +1,7 @@
 package com.github.chsssssss.eonje.ui.placedetail
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -271,12 +273,20 @@ private fun AddTagChip(onClick: () -> Unit) {
 
 @Composable
 private fun PlacePostRow(post: PlacePost) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(EonjeColors.surface)
-            .padding(12.dp),
+            .padding(12.dp)
+            .clickable {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(post.label)))
+                }.onFailure {
+                    Toast.makeText(context, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show()
+                }
+            },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

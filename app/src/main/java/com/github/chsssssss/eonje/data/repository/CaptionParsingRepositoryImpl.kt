@@ -96,9 +96,9 @@ class CaptionParsingRepositoryImpl @Inject constructor(
     }
 
     private fun buildFirebaseModel(): GenerativeModel? {
-        val projectId = BuildConfig.FIREBASE_PROJECT_ID
-        val applicationId = BuildConfig.FIREBASE_APPLICATION_ID
-        val apiKey = BuildConfig.FIREBASE_API_KEY
+        val projectId = BuildConfig.FIREBASE_GEMINI_PROJECT_ID
+        val applicationId = BuildConfig.FIREBASE_GEMINI_APPLICATION_ID
+        val apiKey = BuildConfig.FIREBASE_GEMINI_API_KEY
         if (projectId.isBlank() || applicationId.isBlank() || apiKey.isBlank()) return null
 
         val options = FirebaseOptions.Builder()

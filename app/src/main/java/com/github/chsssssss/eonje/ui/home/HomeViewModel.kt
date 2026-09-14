@@ -3,6 +3,8 @@ package com.github.chsssssss.eonje.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.chsssssss.eonje.data.local.PlaceEntity
+import com.github.chsssssss.eonje.domain.model.GeoPoint
+import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.TagRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -25,11 +28,20 @@ class HomeViewModel @Inject constructor(
     savedPostRepository: SavedPostRepository,
     placeRepository: PlaceRepository,
     tagRepository: TagRepository,
+    private val locationRepository: LocationRepository,
 ) : ViewModel() {
 
     private val isMapView = MutableStateFlow(true)
     private val selectedTagId = MutableStateFlow<String?>(null)
     private val searchQuery = MutableStateFlow("")
+    private val selectedPlaceId = MutableStateFlow<String?>(null)
+    private val currentLocation = MutableStateFlow<GeoPoint?>(null)
+
+    // combine은 인자 5개까지만 받아서, 화면 상태들을 하나로 묶어 한 자리를 차지하게 한다.
+    private val viewState: Flow<ViewState> =
+        combine(isMapView, selectedPlaceId, currentLocation) { mapView, selectedId, location ->
+            ViewState(mapView, selectedId, location)
+        }
 
     private val filteredSelection: Flow<Pair<String?, Set<String>?>> = selectedTagId.flatMapLatest { tagId ->
         if (tagId == null) {
@@ -48,8 +60,8 @@ class HomeViewModel @Inject constructor(
         placeRepository.observeAll(),
         tagRepository.observeAll(),
         filters,
-        isMapView,
-    ) { pendingPosts, places, tags, filters, mapView ->
+        viewState,
+    ) { pendingPosts, places, tags, filters, (mapView, selectedPlaceId, currentLocation) ->
         val tagFiltered = if (filters.allowedPlaceIds == null) places else places.filter { it.id in filters.allowedPlaceIds }
         val query = filters.query.trim()
         val visiblePlaces = if (query.isEmpty()) {
@@ -73,6 +85,8 @@ class HomeViewModel @Inject constructor(
             tags = tags,
             selectedTagId = filters.selectedTagId,
             searchQuery = filters.query,
+            selectedPlaceId = selectedPlaceId,
+            currentLocation = currentLocation,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -91,7 +105,24 @@ class HomeViewModel @Inject constructor(
     fun onSearchQueryChange(query: String) {
         searchQuery.value = query
     }
+
+    fun onSelectPlace(placeId: String?) {
+        selectedPlaceId.value = placeId
+    }
+
+    /** 위치 권한이 확인된 뒤 호출한다. 못 잡으면 null로 남고 지도는 저장된 장소 기준으로 그려진다. */
+    fun refreshCurrentLocation() {
+        viewModelScope.launch {
+            currentLocation.value = locationRepository.getCurrentLocation()
+        }
+    }
 }
+
+private data class ViewState(
+    val isMapView: Boolean,
+    val selectedPlaceId: String?,
+    val currentLocation: GeoPoint?,
+)
 
 private data class HomeFilters(
     val selectedTagId: String?,

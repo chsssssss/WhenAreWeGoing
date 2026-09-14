@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -52,27 +51,6 @@ fun CandidateStatusChip(candidateCount: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * 계정 미등록으로 자동 매칭에 실패한 카드에 뜬다. CandidateStatusChip의 "직접 찾기"(장소를 못 찾은 경우)와
- * 구분해서, 계정을 등록하면 해결될 수 있다는 걸 알려준다.
- */
-@Composable
-fun AccountNotFoundChip(modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(13.dp)
-    Row(
-        modifier = modifier
-            .height(26.dp)
-            .clip(shape)
-            .background(EonjeColors.warning.copy(alpha = 0.16f))
-            .padding(start = 9.dp, end = 11.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(modifier = Modifier.size(6.dp).background(EonjeColors.warning, CircleShape))
-        Text(text = "계정 미등록", style = Typography.labelSmall, color = EonjeColors.warning)
-    }
-}
-
 /** 인박스 카드 상태 표시 — WorkManager에서 캡션 파싱이 아직 안 끝난 게시물에 뜬다. */
 @Composable
 fun ProcessingStatusChip(modifier: Modifier = Modifier) {
@@ -82,15 +60,9 @@ fun ProcessingStatusChip(modifier: Modifier = Modifier) {
             .height(26.dp)
             .clip(shape)
             .background(EonjeColors.surfaceVariant)
-            .padding(start = 9.dp, end = 11.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(10.dp),
-            color = EonjeColors.textMuted,
-            strokeWidth = 1.5.dp,
-        )
         Text(
             text = "정리 중",
             style = Typography.labelSmall,

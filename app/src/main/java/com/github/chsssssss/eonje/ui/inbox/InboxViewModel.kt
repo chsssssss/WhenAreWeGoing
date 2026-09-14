@@ -8,8 +8,6 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
-import com.github.chsssssss.eonje.domain.model.ResolveStatus
-import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.widget.InboxWidget
@@ -52,9 +50,6 @@ class InboxViewModel @Inject constructor(
         InboxUiState(
             items = posts.map { it.toInboxItem(isProcessing = it.id in processingIds) },
             isLoading = false,
-            showUnregisteredAccountBanner = posts.any {
-                it.status == ResolveStatus.UNRESOLVED && it.unresolvedReason == UnresolvedReason.ACCOUNT_NOT_FOUND
-            },
             staleItemIds = posts.filter { it.createdAt < staleThreshold }.map { it.id },
             showCleanupDialog = showDialog,
             pendingDeleteId = deleteId,
@@ -108,6 +103,5 @@ class InboxViewModel @Inject constructor(
         extractedCount = extractedCount,
         thumbnailUrl = thumbnailUrl,
         isProcessing = isProcessing,
-        unresolvedReason = unresolvedReason,
     )
 }
