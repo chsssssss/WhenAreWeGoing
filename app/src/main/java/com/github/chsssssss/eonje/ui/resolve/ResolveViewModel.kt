@@ -10,6 +10,7 @@ import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
+import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
@@ -45,6 +46,7 @@ class ResolveViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val extractedCandidateRepository: ExtractedCandidateRepository,
+    private val folderRepository: FolderRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -83,6 +85,12 @@ class ResolveViewModel @Inject constructor(
                 .debounce(400)
                 .distinctUntilChanged()
                 .collectLatest { query -> runSearch(query) }
+        }
+
+        viewModelScope.launch {
+            folderRepository.observeAll().collect { folders ->
+                _uiState.update { it.copy(folders = folders) }
+            }
         }
     }
 
@@ -174,6 +182,26 @@ class ResolveViewModel @Inject constructor(
         }
     }
 
+    fun onOpenFolderPicker() {
+        _uiState.update { it.copy(showFolderPicker = true) }
+    }
+
+    fun onDismissFolderPicker() {
+        _uiState.update { it.copy(showFolderPicker = false) }
+    }
+
+    fun onSelectFolder(folderId: String?) {
+        _uiState.update { it.copy(selectedFolderId = folderId, showFolderPicker = false) }
+    }
+
+    fun onCreateFolder(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            val folder = folderRepository.findOrCreateByName(name)
+            _uiState.update { it.copy(selectedFolderId = folder.id, showFolderPicker = false) }
+        }
+    }
+
     fun onConfirm() {
         if (_uiState.value.isMultiMode) onConfirmMulti() else onConfirmSingle()
     }
@@ -229,6 +257,7 @@ class ResolveViewModel @Inject constructor(
                 status = ResolveStatus.RESOLVED,
                 createdAt = now,
                 resolvedAt = now,
+                folderId = _uiState.value.selectedFolderId,
             )
         )
         placeRepository.linkPostToPlace(postId, placeId)

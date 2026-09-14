@@ -29,7 +29,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
+import com.github.chsssssss.eonje.ui.components.FolderChip
+import com.github.chsssssss.eonje.ui.components.FolderPickerContent
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
@@ -85,8 +89,24 @@ fun ResolveScreen(
         onToggleGroupChecked = viewModel::onToggleGroupChecked,
         onToggleGroupExpanded = viewModel::onToggleGroupExpanded,
         onSelectMultiCandidate = viewModel::onSelectMultiCandidate,
+        onOpenFolderPicker = viewModel::onOpenFolderPicker,
         modifier = modifier,
     )
+
+    if (uiState.showFolderPicker) {
+        ModalBottomSheet(
+            onDismissRequest = viewModel::onDismissFolderPicker,
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = EonjeColors.surface,
+        ) {
+            FolderPickerContent(
+                folders = uiState.folders,
+                selectedFolderId = uiState.selectedFolderId,
+                onSelectFolder = viewModel::onSelectFolder,
+                onCreateFolder = viewModel::onCreateFolder,
+            )
+        }
+    }
 }
 
 @Composable
@@ -100,6 +120,7 @@ private fun ResolveContent(
     onToggleGroupChecked: (Int) -> Unit,
     onToggleGroupExpanded: (Int) -> Unit,
     onSelectMultiCandidate: (Int, PlaceCandidate) -> Unit,
+    onOpenFolderPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize().background(EonjeColors.background)) {
@@ -152,6 +173,15 @@ private fun ResolveContent(
                 )
                 Text("원본 열기", style = Typography.labelMedium, color = EonjeColors.accent)
             }
+        }
+
+        Row(
+            modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("폴더", style = Typography.labelMedium, color = EonjeColors.textMuted)
+            FolderChip(folderName = uiState.selectedFolderName, onClick = onOpenFolderPicker)
         }
 
         if (uiState.isMultiMode) {
@@ -385,6 +415,7 @@ private fun ResolveScreenPreview() {
             onToggleGroupChecked = {},
             onToggleGroupExpanded = {},
             onSelectMultiCandidate = { _, _ -> },
+            onOpenFolderPicker = {},
         )
     }
 }
@@ -427,6 +458,7 @@ private fun ResolveScreenMultiPreview() {
             onToggleGroupChecked = {},
             onToggleGroupExpanded = {},
             onSelectMultiCandidate = { _, _ -> },
+            onOpenFolderPicker = {},
         )
     }
 }

@@ -9,7 +9,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.github.chsssssss.eonje.ui.home.HomeScreen
 import com.github.chsssssss.eonje.ui.inbox.InboxScreen
-import com.github.chsssssss.eonje.ui.placedetail.PlaceDetailScreen
 import com.github.chsssssss.eonje.ui.resolve.ResolveScreen
 import com.github.chsssssss.eonje.ui.settings.SettingsScreen
 
@@ -24,9 +23,7 @@ fun EonjeNavHost(
         modifier = modifier,
     ) {
         composable(EonjeDestinations.HOME) {
-            HomeScreen(
-                onPlaceClick = { placeId -> navController.navigate(EonjeDestinations.placeDetailRoute(placeId)) },
-            )
+            HomeScreen()
         }
         composable(EonjeDestinations.INBOX) {
             InboxScreen(
@@ -41,12 +38,6 @@ fun EonjeNavHost(
             arguments = listOf(navArgument(EonjeDestinations.RESOLVE_POST_ID_ARG) { type = NavType.StringType }),
         ) {
             ResolveScreen(onNavigateBack = { navController.popBackStack() })
-        }
-        composable(
-            route = EonjeDestinations.PLACE_DETAIL,
-            arguments = listOf(navArgument(EonjeDestinations.PLACE_DETAIL_ID_ARG) { type = NavType.StringType }),
-        ) {
-            PlaceDetailScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }

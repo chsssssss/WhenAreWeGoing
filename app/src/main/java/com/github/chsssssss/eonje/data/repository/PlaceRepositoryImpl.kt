@@ -33,4 +33,10 @@ class PlaceRepositoryImpl @Inject constructor(
         crossRefDao.postIdsForPlace(placeId)
 
     override fun observeAll(): Flow<List<PlaceEntity>> = placeDao.observeAll()
+
+    override suspend fun assignFolder(placeId: String, folderId: String?) =
+        placeDao.updateFolder(placeId, folderId)
+
+    override suspend fun assignFolderToPlaces(placeIds: List<String>, folderId: String?) =
+        placeDao.updateFolderForPlaces(placeIds, folderId)
 }

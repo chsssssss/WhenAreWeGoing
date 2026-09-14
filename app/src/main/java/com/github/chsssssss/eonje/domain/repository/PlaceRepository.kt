@@ -13,4 +13,8 @@ interface PlaceRepository {
     suspend fun linkPostToPlace(postId: String, placeId: String)
     suspend fun postIdsForPlace(placeId: String): List<String>
     fun observeAll(): Flow<List<PlaceEntity>>
+
+    /** folderId가 null이면 미분류로 되돌린다. */
+    suspend fun assignFolder(placeId: String, folderId: String?)
+    suspend fun assignFolderToPlaces(placeIds: List<String>, folderId: String?)
 }

@@ -19,4 +19,10 @@ interface PlaceDao {
 
     @Query("SELECT * FROM places ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PlaceEntity>>
+
+    @Query("UPDATE places SET folderId = :folderId WHERE id = :placeId")
+    suspend fun updateFolder(placeId: String, folderId: String?)
+
+    @Query("UPDATE places SET folderId = :folderId WHERE id IN (:placeIds)")
+    suspend fun updateFolderForPlaces(placeIds: List<String>, folderId: String?)
 }

@@ -9,11 +9,10 @@ import androidx.room.TypeConverters
         SavedPostEntity::class,
         PlaceEntity::class,
         PostPlaceCrossRef::class,
-        TagEntity::class,
-        PlaceTagCrossRef::class,
         ExtractedCandidateEntity::class,
+        FolderEntity::class,
     ],
-    version = 6,
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -21,7 +20,6 @@ abstract class EonjeDatabase : RoomDatabase() {
     abstract fun savedPostDao(): SavedPostDao
     abstract fun placeDao(): PlaceDao
     abstract fun postPlaceCrossRefDao(): PostPlaceCrossRefDao
-    abstract fun tagDao(): TagDao
-    abstract fun placeTagCrossRefDao(): PlaceTagCrossRefDao
     abstract fun extractedCandidateDao(): ExtractedCandidateDao
+    abstract fun folderDao(): FolderDao
 }

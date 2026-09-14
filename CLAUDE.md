@@ -93,13 +93,21 @@ data class PlaceEntity(
     val memo: String?,
     val status: ResolveStatus,
     val createdAt: Long,
-    val resolvedAt: Long?
+    val resolvedAt: Long?,
+    val folderId: String?     // null이면 미분류. 폴더는 장소당 하나(다대다 아님) — FolderEntity 참고
 )
 
 @Entity(primaryKeys = ["postId", "placeId"])
 data class PostPlaceCrossRef(
     val postId: String,
     val placeId: String
+)
+
+@Entity(tableName = "folders")
+data class FolderEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val createdAt: Long
 )
 
 enum class ResolveStatus {
@@ -113,32 +121,19 @@ enum class UnresolvedReason {
     PLACE_NOT_FOUND,    // 캡션 파싱·카카오 검색에서 장소를 못 찾음 (비공개 게시물 등으로 캡션 자체를 못 가져온 경우 포함)
     NETWORK_ERROR,      // 재시도 한도 초과로 포기
 }
-
-@Entity(tableName = "tags")
-data class TagEntity(
-    @PrimaryKey val id: String,
-    val name: String,
-    val isPreset: Boolean
-)
-
-@Entity(primaryKeys = ["placeId", "tagId"])
-data class PlaceTagCrossRef(
-    val placeId: String,
-    val tagId: String
-)
 ```
 
-인덱스: `SavedPostEntity.shortcode`, `PlaceEntity.kakaoPlaceId`
+인덱스: `SavedPostEntity.shortcode`, `PlaceEntity.kakaoPlaceId`, `PlaceEntity.folderId`
 
 ## 화면 구성
 
 | 화면 | 역할 |
 |---|---|
 | ShareReceiverActivity | UI 없음. 인텐트 수신 → 토스트 → finish() |
-| HomeScreen | 지도 + 리스트 토글. 태그 필터 칩 |
+| HomeScreen | 지도 + 리스트 토글. 검색. 리스트 뷰에서 행별 폴더 칩으로 재배정 |
 | InboxScreen | 미확정 게시물 카드 목록. 카드별 "후보 N곳" / "직접 찾기" 칩 |
-| ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색 |
-| PlaceDetailScreen | 장소 상세 + 관련 게시물 목록(원본 열기 가능) |
+| ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색. 폴더 선택(선택사항, 다중 모드는 일괄 배정) |
+| PlaceDetailScreen | 장소 상세 + 관련 게시물 목록(원본 열기 가능) + 폴더 재배정 |
 | SettingsScreen | 지금은 빈 자리만 유지 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어냄) |
 
 하단 네비게이션 3탭: 홈 / 인박스(배지) / 설정
@@ -176,6 +171,14 @@ data class PlaceTagCrossRef(
 다중 장소 자동 확정 금지: 리스트형 게시물은 원하는 가게만 골라 저장해야 한다.
 
 *실기기 검증 완료(2026-09-12): 공유 → Apify 캡션 조회 → Gemini 추출 → 카카오 검색 → 자동 확정까지 계정 등록 없이 전 과정 동작 확인.*
+
+### F6. 폴더
+
+- 장소는 폴더 하나에만 속한다. 기본값은 "미분류"
+- 정리 화면(ResolveScreen)에서 장소 확정 시 폴더 선택은 선택사항 — 건너뛰면 자동으로 "미분류"에 들어간다. 강제하지 않는다
+- 다중 모드에서 선택한 여러 장소를 한 번에 같은 폴더로 일괄 배정 가능
+- 확정 이후에도 장소 상세 화면이나 리스트 뷰에서 언제든 폴더 재배정 가능
+- 사용자가 폴더를 자유롭게 생성. 프리셋 없음 (태그와 달리 폴더명은 "성수 맛집", "회사 근처"처럼 사용자마다 쓰임이 달라 프리셋 의미 없음)
 
 ## 예외 처리 원칙
 
