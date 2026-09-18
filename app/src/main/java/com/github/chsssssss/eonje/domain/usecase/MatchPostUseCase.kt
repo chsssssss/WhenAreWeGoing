@@ -2,6 +2,7 @@ package com.github.chsssssss.eonje.domain.usecase
 
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
+import com.github.chsssssss.eonje.data.local.ThumbnailStore
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
@@ -39,6 +40,7 @@ class MatchPostUseCase @Inject constructor(
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val placeRepository: PlaceRepository,
     private val extractedCandidateRepository: ExtractedCandidateRepository,
+    private val thumbnailStore: ThumbnailStore,
     private val notifier: PlaceSavedNotifier,
 ) {
     suspend operator fun invoke(postId: String): MatchPostResult {
@@ -50,11 +52,13 @@ class MatchPostUseCase @Inject constructor(
         val caption = meta.caption
         if (caption.isNullOrBlank()) return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
         val mediaUrls = listOfNotNull(meta.imageUrl)
+        // 인스타 CDN의 media_url은 시간이 지나면 만료되므로, 나중에도 계속 보이도록 기기에 받아둔다.
+        val thumbnailUrl = mediaUrls.firstOrNull()?.let { thumbnailStore.cache(postId, it) }
 
         savedPostRepository.updateExtraction(
             id = postId,
             caption = caption,
-            thumbnailUrl = mediaUrls.firstOrNull(),
+            thumbnailUrl = thumbnailUrl,
             extractedCount = 0,
         )
 
@@ -75,7 +79,7 @@ class MatchPostUseCase @Inject constructor(
         savedPostRepository.updateExtraction(
             id = postId,
             caption = caption,
-            thumbnailUrl = mediaUrls.firstOrNull(),
+            thumbnailUrl = thumbnailUrl,
             extractedCount = extracted.size,
         )
 

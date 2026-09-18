@@ -74,7 +74,7 @@ data class SavedPostEntity(
     val shortcode: String?,
     val instagramUrl: String,
     val caption: String?,
-    val thumbnailUrl: String?,
+    val thumbnailUrl: String?,   // 인스타 CDN URL이 아니라 ThumbnailStore가 받아둔 file:// 로컬 경로 (만료 안 됨)
     val status: ResolveStatus,
     val extractedCount: Int,
     val createdAt: Long,
@@ -152,6 +152,7 @@ enum class UnresolvedReason {
 ### F2. 장소 추출 및 매칭 (WorkManager)
 
 1. **계정명·캡션 조회** — Firebase Cloud Function `fetchInstagramMeta` → Apify `apify/instagram-scraper` 액터로 게시물 URL만으로 캡션 원문(안 잘림) + 대표 이미지 URL을 받는다. 계정을 등록하거나 추적하지 않는다 — 이 게시물 하나를 푸는 데 그걸로 충분하다
+1.5. 대표 이미지는 `ThumbnailStore`로 기기에 다운로드해서 `thumbnailUrl`에 file:// 경로로 저장한다 — 인스타 CDN의 media_url은 시간이 지나면 만료돼서 원본 URL을 그대로 저장해두면 나중에 인박스·상세화면에서 사진이 안 보이게 된다. 다운로드 실패 시엔 원본 URL을 그대로 폴백(최선 노력, F2 실패로 취급하지 않음). 게시물 삭제 시 로컬 파일도 함께 정리된다(`SavedPostRepositoryImpl.deleteByIds`)
 2. 실패(비공개 게시물, Apify 오류, Cloud Run 일시 장애 등) → `MatchPostResult.Retry`로 WorkManager 지수 백오프 재시도. 재시도 한도(5회) 넘기면 `UNRESOLVED(NETWORK_ERROR)`
 3. 캡션이 비어있으면 `UNRESOLVED(PLACE_NOT_FOUND)`
 4. 캡션 파싱 시도 순서:

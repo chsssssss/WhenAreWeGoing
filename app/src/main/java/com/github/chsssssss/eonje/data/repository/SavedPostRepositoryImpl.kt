@@ -2,6 +2,7 @@ package com.github.chsssssss.eonje.data.repository
 
 import com.github.chsssssss.eonje.data.local.SavedPostDao
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
+import com.github.chsssssss.eonje.data.local.ThumbnailStore
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
@@ -9,7 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class SavedPostRepositoryImpl @Inject constructor(
-    private val dao: SavedPostDao
+    private val dao: SavedPostDao,
+    private val thumbnailStore: ThumbnailStore,
 ) : SavedPostRepository {
     override suspend fun findByShortcode(shortcode: String): SavedPostEntity? =
         dao.findByShortcode(shortcode)
@@ -26,7 +28,10 @@ class SavedPostRepositoryImpl @Inject constructor(
     override suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int) =
         dao.updateExtraction(id, caption, thumbnailUrl, extractedCount)
 
-    override suspend fun deleteByIds(ids: List<String>) = dao.deleteByIds(ids)
+    override suspend fun deleteByIds(ids: List<String>) {
+        dao.deleteByIds(ids)
+        thumbnailStore.deleteAll(ids)
+    }
 
     override fun observeAll(): Flow<List<SavedPostEntity>> = dao.observeAll()
 
