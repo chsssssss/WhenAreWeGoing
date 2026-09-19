@@ -25,4 +25,10 @@ interface PlaceDao {
 
     @Query("UPDATE places SET folderId = :folderId WHERE id IN (:placeIds)")
     suspend fun updateFolderForPlaces(placeIds: List<String>, folderId: String?)
+
+    @Query("UPDATE places SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun clearFolder(folderId: String)
+
+    @Query("DELETE FROM places WHERE id = :id")
+    suspend fun delete(id: String)
 }

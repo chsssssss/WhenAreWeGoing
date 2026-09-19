@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje.ui.home
 
 import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 
 /** 폴더 탭에서 고를 수 있는 세 가지 필터 — 전체, 미분류, 특정 폴더. */
@@ -20,6 +21,8 @@ data class HomePlace(
     val thumbnailUrl: String? = null,
     val folderId: String? = null,
     val folderName: String? = null,
+    val folderColor: Int = FolderVisuals.DEFAULT_COLOR,
+    val folderIcon: String = FolderVisuals.DEFAULT_ICON,
     val memo: String = "",
 )
 
@@ -39,8 +42,17 @@ data class HomeUiState(
     val selectedPlacePosts: List<HomePlacePost> = emptyList(),
     val currentLocation: GeoPoint? = null,
     val folderPickerForPlaceId: String? = null,
+    val showCreateFolderSheet: Boolean = false,
+    val folderAssignForPlaceId: String? = null,
+    val folderAssignSelectedFolderId: String? = null,
 ) {
     /** 선택된 장소 — 바텀시트가 목록 모드인지 상세 모드인지도 이 값의 null 여부로 결정된다. */
     val highlighted: HomePlace? get() = places.firstOrNull { it.id == selectedPlaceId }
     val folderPickerForPlace: HomePlace? get() = places.firstOrNull { it.id == folderPickerForPlaceId }
+
+    /** 상세화면 폴더 변경 시트의 대상 장소. */
+    val folderAssignForPlace: HomePlace? get() = places.firstOrNull { it.id == folderAssignForPlaceId }
+
+    /** 저장하지 않은 채 닫으려고 하면 경고를 띄워야 하는지 — 원래 폴더와 체크 상태가 다른 경우. */
+    val folderAssignHasChanges: Boolean get() = folderAssignForPlace?.folderId != folderAssignSelectedFolderId
 }

@@ -2,8 +2,10 @@ package com.github.chsssssss.eonje.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.chsssssss.eonje.data.local.FolderEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
+import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
@@ -35,14 +37,29 @@ class HomeViewModel @Inject constructor(
     private val currentLocation = MutableStateFlow<GeoPoint?>(null)
     private val folderFilter = MutableStateFlow<FolderFilter>(FolderFilter.All)
     private val folderPickerForPlaceId = MutableStateFlow<String?>(null)
+    private val showCreateFolderSheet = MutableStateFlow(false)
+    private val folderAssignForPlaceId = MutableStateFlow<String?>(null)
+    private val folderAssignSelectedFolderId = MutableStateFlow<String?>(null)
 
     private val _toastMessages = Channel<String>(Channel.BUFFERED)
     val toastMessages = _toastMessages.receiveAsFlow()
 
+    // combine은 인자 5개까지만 받아서, 상세화면 폴더 변경 시트의 상태 둘을 먼저 하나로 묶는다.
+    private val folderAssignState: Flow<FolderAssignState> =
+        combine(folderAssignForPlaceId, folderAssignSelectedFolderId) { placeId, selectedFolderId ->
+            FolderAssignState(placeId, selectedFolderId)
+        }
+
     // combine은 인자 5개까지만 받아서, 화면 상태들을 하나로 묶어 한 자리를 차지하게 한다.
     private val viewState: Flow<ViewState> =
-        combine(selectedPlaceId, currentLocation, folderPickerForPlaceId) { selectedId, location, pickerFor ->
-            ViewState(selectedId, location, pickerFor)
+        combine(
+            selectedPlaceId,
+            currentLocation,
+            folderPickerForPlaceId,
+            showCreateFolderSheet,
+            folderAssignState,
+        ) { selectedId, location, pickerFor, showCreateFolder, folderAssign ->
+            ViewState(selectedId, location, pickerFor, showCreateFolder, folderAssign)
         }
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -51,7 +68,7 @@ class HomeViewModel @Inject constructor(
         folderRepository.observeAll(),
         folderFilter,
         viewState,
-    ) { places, query, folders, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId) ->
+    ) { places, query, folders, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign) ->
         val folderFiltered = when (filter) {
             FolderFilter.All -> places
             FolderFilter.Unclassified -> places.filter { it.folderId == null }
@@ -67,7 +84,7 @@ class HomeViewModel @Inject constructor(
                     place.address.orEmpty().contains(trimmedQuery, ignoreCase = true)
             }
         }
-        val folderNamesById = folders.associate { it.id to it.name }
+        val foldersById = folders.associateBy { it.id }
         val placesWithPosts = visiblePlaces.map { place ->
             val postIds = placeRepository.postIdsForPlace(place.id)
             place to savedPostRepository.findByIds(postIds)
@@ -79,7 +96,7 @@ class HomeViewModel @Inject constructor(
 
         HomeUiState(
             places = placesWithPosts.map { (place, posts) ->
-                place.toHomePlace(posts.firstNotNullOfOrNull { it.thumbnailUrl }, folderNamesById[place.folderId])
+                place.toHomePlace(posts.firstNotNullOfOrNull { it.thumbnailUrl }, foldersById[place.folderId])
             },
             folders = folders,
             folderFilter = filter,
@@ -88,6 +105,9 @@ class HomeViewModel @Inject constructor(
             selectedPlacePosts = selectedPosts,
             currentLocation = currentLocation,
             folderPickerForPlaceId = folderPickerForPlaceId,
+            showCreateFolderSheet = showCreateFolder,
+            folderAssignForPlaceId = folderAssign.placeId,
+            folderAssignSelectedFolderId = folderAssign.selectedFolderId,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -141,15 +161,81 @@ class HomeViewModel @Inject constructor(
             placeRepository.assignFolder(placeId, folder.id)
         }
     }
+
+    fun onOpenCreateFolderSheet() {
+        showCreateFolderSheet.value = true
+    }
+
+    fun onDismissCreateFolderSheet() {
+        showCreateFolderSheet.value = false
+    }
+
+    fun onCreateFolderWithAppearance(name: String, color: Int, iconKey: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            folderRepository.createWithAppearance(name, color, iconKey)
+            showCreateFolderSheet.value = false
+        }
+    }
+
+    fun onDeleteFolder(folderId: String) {
+        viewModelScope.launch {
+            folderRepository.delete(folderId)
+            val filter = folderFilter.value
+            if (filter is FolderFilter.ByFolder && filter.folderId == folderId) {
+                folderFilter.value = FolderFilter.All
+            }
+        }
+    }
+
+    /** 상세화면 헤더의 마커 버튼 — 현재 배정된 폴더를 미리 체크한 채로 변경 시트를 연다. */
+    fun onOpenFolderAssign(placeId: String) {
+        val currentFolderId = uiState.value.places.firstOrNull { it.id == placeId }?.folderId
+        folderAssignForPlaceId.value = placeId
+        folderAssignSelectedFolderId.value = currentFolderId
+    }
+
+    /** 체크박스 토글 — 이미 체크된 폴더를 다시 누르면 전부 해제된다(장소당 폴더는 하나뿐이라 단일 선택). */
+    fun onToggleFolderAssignSelection(folderId: String) {
+        folderAssignSelectedFolderId.value =
+            if (folderAssignSelectedFolderId.value == folderId) null else folderId
+    }
+
+    /** 아무 폴더도 체크 안 된 채로 저장하면 배정을 지우는 것과 같다(저장삭제). */
+    fun onSaveFolderAssign() {
+        val placeId = folderAssignForPlaceId.value ?: return
+        val folderId = folderAssignSelectedFolderId.value
+        viewModelScope.launch { placeRepository.assignFolder(placeId, folderId) }
+        folderAssignForPlaceId.value = null
+    }
+
+    fun onDismissFolderAssign() {
+        folderAssignForPlaceId.value = null
+    }
+
+    /** 장소 자체를 지운다 — 상세화면이 열려 있었다면 닫는다. */
+    fun onDeletePlace(placeId: String) {
+        viewModelScope.launch {
+            placeRepository.delete(placeId)
+            if (selectedPlaceId.value == placeId) selectedPlaceId.value = null
+        }
+    }
 }
+
+private data class FolderAssignState(
+    val placeId: String?,
+    val selectedFolderId: String?,
+)
 
 private data class ViewState(
     val selectedPlaceId: String?,
     val currentLocation: GeoPoint?,
     val folderPickerForPlaceId: String?,
+    val showCreateFolderSheet: Boolean,
+    val folderAssign: FolderAssignState,
 )
 
-private fun PlaceEntity.toHomePlace(thumbnailUrl: String?, folderName: String?) = HomePlace(
+private fun PlaceEntity.toHomePlace(thumbnailUrl: String?, folder: FolderEntity?) = HomePlace(
     id = id,
     name = name ?: "이름 없는 장소",
     category = category.orEmpty(),
@@ -158,7 +244,9 @@ private fun PlaceEntity.toHomePlace(thumbnailUrl: String?, folderName: String?) 
     longitude = longitude,
     thumbnailUrl = thumbnailUrl,
     folderId = folderId,
-    folderName = folderName,
+    folderName = folder?.name,
+    folderColor = folder?.color ?: FolderVisuals.DEFAULT_COLOR,
+    folderIcon = folder?.iconKey ?: FolderVisuals.DEFAULT_ICON,
     memo = memo.orEmpty(),
 )
 

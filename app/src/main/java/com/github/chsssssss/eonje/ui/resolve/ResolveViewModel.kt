@@ -202,6 +202,15 @@ class ResolveViewModel @Inject constructor(
         }
     }
 
+    fun onDeleteFolder(folderId: String) {
+        viewModelScope.launch {
+            folderRepository.delete(folderId)
+            if (_uiState.value.selectedFolderId == folderId) {
+                _uiState.update { it.copy(selectedFolderId = null) }
+            }
+        }
+    }
+
     fun onConfirm() {
         if (_uiState.value.isMultiMode) onConfirmMulti() else onConfirmSingle()
     }

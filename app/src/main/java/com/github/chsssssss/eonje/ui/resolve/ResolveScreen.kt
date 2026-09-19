@@ -104,6 +104,7 @@ fun ResolveScreen(
                 selectedFolderId = uiState.selectedFolderId,
                 onSelectFolder = viewModel::onSelectFolder,
                 onCreateFolder = viewModel::onCreateFolder,
+                onDeleteFolder = viewModel::onDeleteFolder,
             )
         }
     }

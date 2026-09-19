@@ -16,4 +16,10 @@ interface FolderDao {
 
     @Query("SELECT * FROM folders ORDER BY name ASC")
     fun observeAll(): Flow<List<FolderEntity>>
+
+    @Query("UPDATE folders SET color = :color, iconKey = :iconKey WHERE id = :id")
+    suspend fun updateAppearance(id: String, color: Int, iconKey: String)
+
+    @Query("DELETE FROM folders WHERE id = :id")
+    suspend fun delete(id: String)
 }
