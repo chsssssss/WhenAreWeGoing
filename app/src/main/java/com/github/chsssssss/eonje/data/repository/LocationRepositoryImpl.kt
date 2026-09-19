@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje.data.repository
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import com.github.chsssssss.eonje.domain.model.GeoPoint
@@ -20,6 +21,8 @@ class LocationRepositoryImpl @Inject constructor(
 
     private val client by lazy { LocationServices.getFusedLocationProviderClient(context) }
 
+    // hasLocationPermission()에서 이미 확인하는데도 lint가 별도 함수로 분리된 권한 체크는 못 따라가서 뜨는 오탐이다.
+    @SuppressLint("MissingPermission")
     override suspend fun getCurrentLocation(): GeoPoint? {
         if (!hasLocationPermission()) return null
         return try {

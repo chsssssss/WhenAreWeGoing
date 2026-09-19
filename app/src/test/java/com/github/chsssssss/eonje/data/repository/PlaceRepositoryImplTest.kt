@@ -85,6 +85,18 @@ class PlaceRepositoryImplTest {
         override suspend fun findById(id: String): PlaceEntity? = places[id]
 
         override fun observeAll(): Flow<List<PlaceEntity>> = MutableStateFlow(places.values.toList())
+
+        override suspend fun updateFolder(placeId: String, folderId: String?) {
+            places[placeId]?.let { places[placeId] = it.copy(folderId = folderId) }
+        }
+
+        override suspend fun updateFolderForPlaces(placeIds: List<String>, folderId: String?) {
+            placeIds.forEach { updateFolder(it, folderId) }
+        }
+
+        override suspend fun clearFolder(folderId: String) {
+            places.replaceAll { _, place -> if (place.folderId == folderId) place.copy(folderId = null) else place }
+        }
     }
 
     private class FakePostPlaceCrossRefDao : PostPlaceCrossRefDao {
