@@ -52,10 +52,10 @@ com.github.chsssssss.eonje/
 │  ├─ repository/      Repository 인터페이스
 │  └─ usecase/
 ├─ ui/
-│  ├─ home/            Screen + ViewModel + State
+│  ├─ home/            Screen + ViewModel + State — 지도, 커스텀 바텀시트(목록/상세 모드), 폴더 관리
 │  ├─ inbox/
 │  ├─ resolve/         정리 화면 (단일/다중 모드)
-│  ├─ placedetail/
+│  ├─ components/      화면 간 공유 컴포저블 (FolderPicker, PlaceholderImage, BottomNavBar 등)
 │  ├─ settings/        지금은 빈 자리만 유지 (5단계 참고)
 │  └─ theme/
 └─ share/              ShareReceiverActivity
@@ -107,7 +107,9 @@ data class PostPlaceCrossRef(
 data class FolderEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val color: Int = FolderVisuals.DEFAULT_COLOR,    // 지도 마커 배경색 — 채도 높은 8색 팔레트(FolderVisuals.colorPalette)에서 선택
+    val iconKey: String = FolderVisuals.DEFAULT_ICON // 지도 마커에 얹는 이모지 아이콘
 )
 
 enum class ResolveStatus {
@@ -130,13 +132,22 @@ enum class UnresolvedReason {
 | 화면 | 역할 |
 |---|---|
 | ShareReceiverActivity | UI 없음. 인텐트 수신 → 토스트 → finish() |
-| HomeScreen | 지도 + 리스트 토글. 검색. 리스트 뷰에서 행별 폴더 칩으로 재배정 |
+| HomeScreen | 지도 + 커스텀 바텀시트(목록/상세 모드). 장소 상세는 별도 화면이 아니라 이 시트의 상세 모드로 통합돼 있다(과거 PlaceDetailScreen은 삭제됨) |
 | InboxScreen | 미확정 게시물 카드 목록. 카드별 "후보 N곳" / "직접 찾기" 칩 |
 | ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색. 폴더 선택(선택사항, 다중 모드는 일괄 배정) |
-| PlaceDetailScreen | 장소 상세 + 관련 게시물 목록(원본 열기 가능) + 폴더 재배정 |
 | SettingsScreen | 지금은 빈 자리만 유지 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어냄) |
 
 하단 네비게이션 3탭: 홈 / 인박스(배지) / 설정
+
+### HomeScreen 바텀시트 구조
+
+`AnchoredDraggableState` 기반 커스텀 바텀시트 — Material3의 `BottomSheetScaffold`는 정지 지점이 2개(peek/expanded)뿐이라 Peek/Mid(화면 40%)/Full(화면 95%) 3단 정지가 필요한 이 화면엔 못 쓴다.
+
+- **목록 모드**: 시트 헤더(핸들+검색창+"장소 추가" 버튼+폴더 탭 줄)는 항상 고정, 장소 카드 리스트만 스크롤된다. 헤더 전체가 `anchoredDraggable`이라 어디를 잡고 끌어도 시트가 오르내린다. 폴더 탭 칩을 길게 누르면 삭제 확인 다이얼로그가 뜬다
+- **상세 모드**: 장소를 탭하면 전환된다. 핸들만 고정, 이름부터 게시물 목록까지는 전부 한 스크롤 영역 — `NestedScrollConnection`이 스크롤이 맨 위/아래에 닿으면 남는 드래그를 시트로 넘긴다
+- **지도 마커**: 일반 마커는 폴더 색+이모지 아이콘을 얹은 작은 원. 선택된 마커만 `ic_map_pin.xml`과 같은 경로를 폴더 색으로 채운 핀 모양(위가 둥글고 아래가 뾰족함)으로 바뀌고, 둥근 머리에 폴더 아이콘이 들어간다 — `KakaoMapView.kt`에서 Canvas로 직접 그린다(폴더별 색·아이콘 조합이라 정적 드로어블로는 표현이 안 됨)
+- **장소 직접 추가**: 검색창 옆 "장소 추가" 버튼 → 카카오 로컬 검색 시트가 뜨고, 결과를 탭하면 게시물 없이 바로 저장된다(RESOLVED, 미분류). 같은 카카오 장소면 새로 만들지 않고 기존 걸 재사용
+- **길찾기**: 장소 상세의 "길찾기" 버튼은 카카오맵 공식 공유 링크(`https://map.kakao.com/link/to/이름,위도,경도`)를 `ACTION_VIEW`로 연다 — 카카오맵 앱이 있으면 앱에서, 없으면 모바일 웹에서 열린다
 
 ## 핵심 기능 명세
 
@@ -180,6 +191,9 @@ enum class UnresolvedReason {
 - 다중 모드에서 선택한 여러 장소를 한 번에 같은 폴더로 일괄 배정 가능
 - 확정 이후에도 장소 상세 화면이나 리스트 뷰에서 언제든 폴더 재배정 가능
 - 사용자가 폴더를 자유롭게 생성. 프리셋 없음 (태그와 달리 폴더명은 "성수 맛집", "회사 근처"처럼 사용자마다 쓰임이 달라 프리셋 의미 없음)
+- 폴더 생성 시 지도 마커에 쓸 색상(채도 높은 8색)과 아이콘(이모지)을 함께 고른다 — `AddFolderContent`에 실시간 마커 미리보기 포함
+- 장소 상세화면 헤더의 마커 버튼을 누르면 체크박스형 폴더 변경 시트(`FolderAssignSheetContent`)가 뜬다. 체크만으로는 안 바뀌고 저장 버튼을 눌러야 반영되며, 아무 것도 체크 안 하고 저장하면 배정이 지워진다("저장삭제")
+- 폴더 삭제는 세 곳에서 가능하다 — ① 목록 카드의 폴더 칩으로 여는 기존 폴더 피커, ② 위의 폴더 변경 체크박스 시트, ③ 홈 목록 화면 폴더 탭 줄의 칩을 길게 누르기. 어느 경로든 확인 다이얼로그를 거치고, 삭제되면 그 폴더의 장소는 전부 미분류로 이동한다
 
 ## 예외 처리 원칙
 
@@ -274,6 +288,18 @@ enum class UnresolvedReason {
 - [x] `UnresolvedReason.ACCOUNT_NOT_FOUND` 제거, Inbox의 미등록 계정 배너/칩 제거
 - [x] SettingsScreen을 빈 자리로 축소 (계정 관리·동기화 주기·토큰 상태가 전부 없어짐 — 탭 구조는 유지)
 - [x] 실기기 전 과정 검증 완료(2026-09-12)
+
+### 6단계 — 홈 화면 UX 개편 (완료, 2026-09-19)
+
+지도+리스트였던 홈 화면을 지도+커스텀 바텀시트(3단 정지) 구조로 다시 다듬고, 장소 상세를 별도 화면에서 바텀시트 상세 모드로 완전히 흡수했다. 자세한 구조는 "HomeScreen 바텀시트 구조" 참고.
+
+- [x] 3단 바텀시트(Peek/Mid/Full)를 `AnchoredDraggableState`로 구현, 헤더 어디를 끌어도 시트가 반응하도록 nestedScroll 연동
+- [x] 지도 마커를 Canvas로 직접 그리는 방식으로 전환 — 일반은 작은 원, 선택 시 핀 모양(위가 둥글고 아래가 뾰족함) + 폴더 아이콘
+- [x] 폴더에 색상·아이콘 선택 추가, 삭제 진입점을 세 곳으로 확장(F6 참고)
+- [x] 검색창을 지도 오버레이에서 시트 헤더로 이동, "폴더 추가"/"장소 추가" 버튼도 플로팅에서 시트 내부 칩·버튼으로 이동
+- [x] 카카오 로컬 검색으로 게시물 없이 장소를 바로 추가하는 기능 추가 — 저장은 `PlaceRepository.save`(kakaoPlaceId 기준 upsert)를 그대로 재사용
+- [x] 길찾기 버튼을 카카오맵 공유 링크로 연결
+- [x] `AnchoredDraggableState.settle()`에 `snapAnimationSpec`을 직접 안 넘겨서 빠른 플링 시 나던 크래시 수정
 
 ## 코딩 컨벤션
 
