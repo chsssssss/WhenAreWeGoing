@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -39,8 +40,10 @@ private val DEFAULT_CENTER: LatLng = LatLng.from(37.5665, 126.9780) // 좌표가
 private const val MY_LOCATION_LABEL_ID = "__my_location__" // 장소 마커와 같은 레이어에 있어서 클릭 처리에서 걸러내야 한다
 private const val NAME_TEXT_MIN_ZOOM_LEVEL = 14 // 이 레벨보다 축소하면 이름이 안 보이고 마커 아이콘만 남는다
 private const val NAME_LABEL_ID_SUFFIX = "__name" // 이름 라벨은 아이콘과 같은 좌표에 별도 라벨로 붙인다
-private const val NAME_TEXT_PIXEL_OFFSET_Y = 68f // 아이콘 아래로 이름을 밀어내는 픽셀 오프셋 — 마커가 작아져서 텍스트 높이까지 감안해 더 밀어내야 한다
-private const val MARKER_DIAMETER_DP = 18f // 선택 여부와 무관하게 항상 같은 크기 — 테두리 색으로만 선택 표시
+private const val NAME_TEXT_PIXEL_OFFSET_Y = 36f // 아이콘 아래로 이름을 밀어내는 픽셀 오프셋
+private const val MARKER_DIAMETER_DP = 18f // 일반 마커 지름
+private const val HIGHLIGHT_MARKER_DIAMETER_DP = 30f // 선택된 핀 모양 마커 지름 — 원 뷰포트(24) 기준 스케일 대상
+private const val PIN_TIP_Y_FRACTION = 22f / 24f // 핀 뾰족한 끝의 세로 위치(뷰포트 24 기준) — 앵커포인트로 쓴다
 
 @Composable
 fun KakaoMapView(
@@ -117,10 +120,14 @@ fun KakaoMapView(
         val styleCache = mutableMapOf<Triple<Int, String, Boolean>, LabelStyles>()
         fun stylesFor(color: Int, icon: String, highlighted: Boolean): LabelStyles =
             styleCache.getOrPut(Triple(color, icon, highlighted)) {
-                val bitmap = context.circleMarkerBitmap(color, icon, highlighted)
-                labelManager.addLabelStyles(
-                    LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
-                )!!
+                // 핀 모양은 뾰족한 끝이 좌표를 가리켜야 해서 앵커가 하단인 반면, 일반 원형 마커는
+                // 중심이 곧 좌표라 앵커가 중앙이다.
+                val style = if (highlighted) {
+                    LabelStyle.from(context.pinMarkerBitmap(color, icon)).setAnchorPoint(0.5f, PIN_TIP_Y_FRACTION)
+                } else {
+                    LabelStyle.from(context.circleMarkerBitmap(color, icon)).setAnchorPoint(0.5f, 0.5f)
+                }
+                labelManager.addLabelStyles(LabelStyles.from(style))!!
             }
         val nameTextStyle = LabelTextStyle.from(22, Color.BLACK, 4, Color.WHITE)
         // 줌 레벨별 스타일 두 개: 축소된 상태(0)에서는 빈 스타일(텍스트 없음), 어느 정도 확대했을 때만 이름을 보여준다.
@@ -190,12 +197,11 @@ private fun Context.vectorDrawableToBitmap(resId: Int): Bitmap {
 }
 
 /** 색이 있는 동그라미 배경 위에 이모지 아이콘을 얹은 마커를 직접 그린다 — 폴더마다 색·아이콘이 달라서
- * 정적 드로어블로는 표현이 안 된다. 이모지는 시스템 폰트로 그려지므로 별도 벡터 리소스가 필요 없다.
- * 선택된 마커는 크기를 키우지 않고 테두리 색·두께만 바꿔서 구분한다 — 지도 위 배치가 흔들리지 않게. */
-private fun Context.circleMarkerBitmap(colorInt: Int, icon: String, highlighted: Boolean): Bitmap {
+ * 정적 드로어블로는 표현이 안 된다. 이모지는 시스템 폰트로 그려지므로 별도 벡터 리소스가 필요 없다. */
+private fun Context.circleMarkerBitmap(colorInt: Int, icon: String): Bitmap {
     val density = resources.displayMetrics.density
     val diameterPx = MARKER_DIAMETER_DP * density
-    val strokePx = (if (highlighted) 4f else 2f) * density
+    val strokePx = 2f * density
     val size = diameterPx.toInt().coerceAtLeast(1)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -206,7 +212,7 @@ private fun Context.circleMarkerBitmap(colorInt: Int, icon: String, highlighted:
     canvas.drawCircle(center, center, radius, fillPaint)
 
     val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (highlighted) Color.parseColor("#FFFFD54F") else Color.WHITE
+        color = Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = strokePx
     }
@@ -218,6 +224,51 @@ private fun Context.circleMarkerBitmap(colorInt: Int, icon: String, highlighted:
     }
     val textY = center - (textPaint.descent() + textPaint.ascent()) / 2f
     canvas.drawText(icon, center, textY, textPaint)
+
+    return bitmap
+}
+
+/** 선택된 마커는 위가 둥글고 아래가 뾰족한 전형적인 핀(물방울) 모양으로 그린다 — 예전에 쓰던
+ * 정적 드로어블(ic_map_pin.xml)과 같은 경로를 폴더 색으로 채워서 재현하고, 둥근 머리 부분
+ * 가운데에 폴더 이모지 아이콘을 얹는다. 뾰족한 끝이 좌표를 가리키므로 앵커는 [PIN_TIP_Y_FRACTION]
+ * (하단)을 쓴다 — [stylesFor] 참고. */
+private fun Context.pinMarkerBitmap(colorInt: Int, icon: String): Bitmap {
+    val density = resources.displayMetrics.density
+    val size = (HIGHLIGHT_MARKER_DIAMETER_DP * density).toInt().coerceAtLeast(1)
+    val scale = size / 24f
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    // ic_map_pin.xml의 pathData(M12,4 C7.58,4 4,7.58 4,12 C4,16.42 12,22 12,22 C12,22 20,16.42 20,12
+    // C20,7.58 16.42,4 12,4 Z)를 그대로 옮기되 24 단위 뷰포트를 비트맵 크기에 맞게 스케일한다.
+    val path = Path().apply {
+        moveTo(12f * scale, 4f * scale)
+        cubicTo(7.58f * scale, 4f * scale, 4f * scale, 7.58f * scale, 4f * scale, 12f * scale)
+        cubicTo(4f * scale, 16.42f * scale, 12f * scale, 22f * scale, 12f * scale, 22f * scale)
+        cubicTo(12f * scale, 22f * scale, 20f * scale, 16.42f * scale, 20f * scale, 12f * scale)
+        cubicTo(20f * scale, 7.58f * scale, 16.42f * scale, 4f * scale, 12f * scale, 4f * scale)
+        close()
+    }
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorInt; style = Paint.Style.FILL }
+    canvas.drawPath(path, fillPaint)
+
+    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f * density
+    }
+    canvas.drawPath(path, strokePaint)
+
+    // 둥근 머리 부분의 중심은 원본 뷰포트 기준 (12, 12).
+    val headCenterX = 12f * scale
+    val headCenterY = 12f * scale
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = size * 0.28f
+    }
+    val textY = headCenterY - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(icon, headCenterX, textY, textPaint)
 
     return bitmap
 }

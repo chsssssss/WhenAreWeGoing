@@ -3,6 +3,7 @@ package com.github.chsssssss.eonje.ui.home
 import com.github.chsssssss.eonje.data.local.FolderEntity
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
+import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 
 /** 폴더 탭에서 고를 수 있는 세 가지 필터 — 전체, 미분류, 특정 폴더. */
 sealed interface FolderFilter {
@@ -56,3 +57,11 @@ data class HomeUiState(
     /** 저장하지 않은 채 닫으려고 하면 경고를 띄워야 하는지 — 원래 폴더와 체크 상태가 다른 경우. */
     val folderAssignHasChanges: Boolean get() = folderAssignForPlace?.folderId != folderAssignSelectedFolderId
 }
+
+/** 게시물 없이 카카오 로컬 검색으로 장소를 바로 추가하는 시트의 상태 — 메인 [HomeUiState]와는 별도로 관리한다. */
+data class AddPlaceUiState(
+    val query: String = "",
+    val results: List<PlaceCandidate> = emptyList(),
+    val isSearching: Boolean = false,
+    val searchError: String? = null,
+)

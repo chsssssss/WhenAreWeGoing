@@ -39,9 +39,4 @@ class PlaceRepositoryImpl @Inject constructor(
 
     override suspend fun assignFolderToPlaces(placeIds: List<String>, folderId: String?) =
         placeDao.updateFolderForPlaces(placeIds, folderId)
-
-    override suspend fun delete(placeId: String) {
-        crossRefDao.deleteForPlace(placeId)
-        placeDao.delete(placeId)
-    }
 }

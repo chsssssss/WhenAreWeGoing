@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.chsssssss.eonje.data.local.FolderEntity
@@ -189,14 +190,18 @@ private fun FolderRow(label: String, selected: Boolean, onClick: () -> Unit, onD
  * 바로 반영되지 않고 저장 버튼을 눌러야 적용된다. 아무 것도 안 체크한 채 저장하면 배정을
  * 지우는 것과 같아서 버튼 라벨이 "저장삭제"로 바뀐다.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderAssignSheetContent(
     folders: List<FolderEntity>,
     selectedFolderId: String?,
     onToggleFolder: (String) -> Unit,
     onSave: () -> Unit,
+    onDeleteFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -214,6 +219,7 @@ fun FolderAssignSheetContent(
                     folder = folder,
                     checked = selectedFolderId == folder.id,
                     onClick = { onToggleFolder(folder.id) },
+                    onDeleteClick = { folderPendingDelete = folder },
                 )
             }
         }
@@ -224,16 +230,39 @@ fun FolderAssignSheetContent(
             modifier = Modifier.fillMaxWidth(),
         )
     }
+
+    val target = folderPendingDelete
+    if (target != null) {
+        AlertDialog(
+            onDismissRequest = { folderPendingDelete = null },
+            title = { Text("'${target.name}' 폴더를 삭제할까요?") },
+            text = { Text("이 폴더에 있던 장소는 미분류로 이동해요.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteFolder(target.id)
+                    folderPendingDelete = null
+                }) {
+                    Text("삭제", color = EonjeColors.warning)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderPendingDelete = null }) {
+                    Text("취소")
+                }
+            },
+            containerColor = EonjeColors.surface,
+        )
+    }
 }
 
 @Composable
-private fun CheckableFolderRow(folder: FolderEntity, checked: Boolean, onClick: () -> Unit) {
+private fun CheckableFolderRow(folder: FolderEntity, checked: Boolean, onClick: () -> Unit, onDeleteClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(12.dp, 11.dp),
+            .padding(12.dp, 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -249,21 +278,24 @@ private fun CheckableFolderRow(folder: FolderEntity, checked: Boolean, onClick: 
             contentDescription = null,
             tint = if (checked) EonjeColors.accent else EonjeColors.iconMuted,
         )
+        IconButton(onClick = onDeleteClick) {
+            Icon(Icons.Filled.DeleteOutline, contentDescription = "폴더 삭제", tint = EonjeColors.iconMuted)
+        }
     }
 }
 
 /** 지도 마커와 동일하게 폴더 색상 원 위에 이모지 아이콘을 얹어서 보여준다 — 상세화면 헤더 버튼과 폴더 체크박스 행에서 재사용. */
 @Composable
-fun FolderMarkerIcon(color: Int, icon: String, modifier: Modifier = Modifier) {
+fun FolderMarkerIcon(color: Int, icon: String, modifier: Modifier = Modifier, size: Dp = 28.dp) {
     Box(
         modifier = modifier
-            .size(28.dp)
+            .size(size)
             .clip(CircleShape)
             .background(Color(color))
-            .border(1.5.dp, Color.White, CircleShape),
+            .border((size.value * 0.05f).dp, Color.White, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(icon, fontSize = 14.sp)
+        Text(icon, fontSize = (size.value * 0.5f).sp)
     }
 }
 
@@ -300,27 +332,35 @@ fun AddFolderContent(onCreate: (name: String, color: Int, iconKey: String) -> Un
         Text("새 폴더", style = Typography.titleLarge, color = EonjeColors.textPrimary)
 
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(EonjeColors.surfaceVariant)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BasicTextField(
-                value = name,
-                onValueChange = { name = it },
-                textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                decorationBox = { inner ->
-                    if (name.isEmpty()) {
-                        Text("폴더 이름", style = Typography.bodyLarge, color = EonjeColors.textMuted)
-                    }
-                    inner()
-                },
-            )
+            // 지도에 실제로 찍힐 마커 모양을 색·아이콘 고르는 동안 바로 확인할 수 있게 미리 보여준다.
+            FolderMarkerIcon(color = selectedColor, icon = selectedIcon, size = 48.dp)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(EonjeColors.surfaceVariant)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BasicTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { inner ->
+                        if (name.isEmpty()) {
+                            Text("폴더 이름", style = Typography.bodyLarge, color = EonjeColors.textMuted)
+                        }
+                        inner()
+                    },
+                )
+            }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

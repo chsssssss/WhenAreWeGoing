@@ -15,7 +15,4 @@ interface PostPlaceCrossRefDao {
 
     @Query("SELECT postId FROM PostPlaceCrossRef WHERE placeId = :placeId")
     suspend fun postIdsForPlace(placeId: String): List<String>
-
-    @Query("DELETE FROM PostPlaceCrossRef WHERE placeId = :placeId")
-    suspend fun deleteForPlace(placeId: String)
 }

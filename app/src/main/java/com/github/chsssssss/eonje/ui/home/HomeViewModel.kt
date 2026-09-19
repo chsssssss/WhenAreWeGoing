@@ -7,10 +7,13 @@ import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
+import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
+import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -18,18 +21,24 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val savedPostRepository: SavedPostRepository,
     private val placeRepository: PlaceRepository,
     private val folderRepository: FolderRepository,
     private val locationRepository: LocationRepository,
+    private val kakaoLocalRepository: KakaoLocalRepository,
 ) : ViewModel() {
 
     private val searchQuery = MutableStateFlow("")
@@ -41,8 +50,57 @@ class HomeViewModel @Inject constructor(
     private val folderAssignForPlaceId = MutableStateFlow<String?>(null)
     private val folderAssignSelectedFolderId = MutableStateFlow<String?>(null)
 
+    private val showAddPlaceSheet = MutableStateFlow(false)
+    private val addPlaceQuery = MutableStateFlow("")
+    private val addPlaceResults = MutableStateFlow<List<PlaceCandidate>>(emptyList())
+    private val addPlaceSearching = MutableStateFlow(false)
+    private val addPlaceError = MutableStateFlow<String?>(null)
+
     private val _toastMessages = Channel<String>(Channel.BUFFERED)
     val toastMessages = _toastMessages.receiveAsFlow()
+
+    val showAddPlace: StateFlow<Boolean> = showAddPlaceSheet
+
+    // 메인 화면 상태의 거대한 combine 체인에 엮지 않고 따로 관리한다 — 검색 디바운스가 있는 독립된 흐름이라서다.
+    val addPlaceUiState: StateFlow<AddPlaceUiState> = combine(
+        addPlaceQuery, addPlaceResults, addPlaceSearching, addPlaceError,
+    ) { query, results, searching, error ->
+        AddPlaceUiState(query, results, searching, error)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = AddPlaceUiState(),
+    )
+
+    init {
+        viewModelScope.launch {
+            addPlaceQuery
+                .debounce(400)
+                .distinctUntilChanged()
+                .collectLatest { query -> runAddPlaceSearch(query) }
+        }
+    }
+
+    private suspend fun runAddPlaceSearch(query: String) {
+        if (query.isBlank()) {
+            addPlaceResults.value = emptyList()
+            addPlaceSearching.value = false
+            addPlaceError.value = null
+            return
+        }
+        addPlaceSearching.value = true
+        kakaoLocalRepository.searchPlaces(query)
+            .onSuccess {
+                addPlaceResults.value = it
+                addPlaceSearching.value = false
+                addPlaceError.value = null
+            }
+            .onFailure {
+                addPlaceResults.value = emptyList()
+                addPlaceSearching.value = false
+                addPlaceError.value = it.message ?: "검색에 실패했어요"
+            }
+    }
 
     // combine은 인자 5개까지만 받아서, 상세화면 폴더 변경 시트의 상태 둘을 먼저 하나로 묶는다.
     private val folderAssignState: Flow<FolderAssignState> =
@@ -127,10 +185,6 @@ class HomeViewModel @Inject constructor(
         folderFilter.value = filter
     }
 
-    fun onDirectionsClick() {
-        _toastMessages.trySend("길찾기 연결은 아직 준비 중이에요")
-    }
-
     /** 위치 권한이 확인된 뒤 호출한다. 못 잡으면 null로 남고 지도는 저장된 장소 기준으로 그려진다. */
     fun refreshCurrentLocation() {
         viewModelScope.launch {
@@ -185,6 +239,9 @@ class HomeViewModel @Inject constructor(
             if (filter is FolderFilter.ByFolder && filter.folderId == folderId) {
                 folderFilter.value = FolderFilter.All
             }
+            if (folderAssignSelectedFolderId.value == folderId) {
+                folderAssignSelectedFolderId.value = null
+            }
         }
     }
 
@@ -213,11 +270,43 @@ class HomeViewModel @Inject constructor(
         folderAssignForPlaceId.value = null
     }
 
-    /** 장소 자체를 지운다 — 상세화면이 열려 있었다면 닫는다. */
-    fun onDeletePlace(placeId: String) {
+    fun onOpenAddPlaceSheet() {
+        showAddPlaceSheet.value = true
+    }
+
+    fun onDismissAddPlaceSheet() {
+        showAddPlaceSheet.value = false
+        addPlaceQuery.value = ""
+        addPlaceResults.value = emptyList()
+        addPlaceError.value = null
+    }
+
+    fun onAddPlaceQueryChange(query: String) {
+        addPlaceQuery.value = query
+    }
+
+    /** 게시물 없이 검색 결과를 바로 장소로 저장한다 — 같은 카카오 장소가 이미 있으면 새로 만들지 않고 재사용한다. */
+    fun onAddPlaceCandidateSelected(candidate: PlaceCandidate) {
         viewModelScope.launch {
-            placeRepository.delete(placeId)
-            if (selectedPlaceId.value == placeId) selectedPlaceId.value = null
+            val now = System.currentTimeMillis()
+            placeRepository.save(
+                PlaceEntity(
+                    id = UUID.randomUUID().toString(),
+                    name = candidate.name,
+                    address = candidate.address,
+                    latitude = candidate.latitude,
+                    longitude = candidate.longitude,
+                    kakaoPlaceId = candidate.kakaoPlaceId,
+                    category = candidate.category,
+                    memo = null,
+                    status = ResolveStatus.RESOLVED,
+                    createdAt = now,
+                    resolvedAt = now,
+                    folderId = null,
+                )
+            )
+            onDismissAddPlaceSheet()
+            _toastMessages.trySend("${candidate.name} 저장됨")
         }
     }
 }

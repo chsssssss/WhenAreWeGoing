@@ -10,7 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.AnchoredDraggableState
 import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -39,12 +43,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -79,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.ui.components.AddFolderContent
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.components.FolderAssignSheetContent
@@ -95,9 +99,9 @@ import kotlinx.coroutines.launch
 /** 바텀시트가 멈출 수 있는 세 지점 — 핸들만 보이는 접힘, 화면의 40%, 거의 전체 펼침. */
 private enum class SheetStop { Peek, Mid, Full }
 
-private val SHEET_PEEK_HEIGHT = 108.dp
+private val SHEET_PEEK_HEIGHT = 172.dp // 검색창이 시트 헤더로 들어오면서 핸들+검색창+폴더 탭이 다 보여야 한다
 private const val SHEET_MID_FRACTION = 0.4f
-private const val SHEET_FULL_FRACTION = 0.92f
+private const val SHEET_FULL_FRACTION = 0.95f
 
 // AnchoredDraggableState(initialValue, anchors) 생성자는 snapAnimationSpec을 초기화하지 않는다
 // (lateinit 상태로 남음) — settle()에 직접 넘겨줘야 한다.
@@ -124,11 +128,27 @@ fun HomeScreen(
         onSelectFolderFilter = viewModel::onSelectFolderFilter,
         onOpenFolderPicker = viewModel::onOpenFolderPicker,
         onOpenFolderAssign = viewModel::onOpenFolderAssign,
-        onDeletePlace = viewModel::onDeletePlace,
-        onDirectionsClick = viewModel::onDirectionsClick,
         onOpenCreateFolderSheet = viewModel::onOpenCreateFolderSheet,
+        onOpenAddPlaceSheet = viewModel::onOpenAddPlaceSheet,
+        onDeleteFolder = viewModel::onDeleteFolder,
         modifier = modifier,
     )
+
+    val showAddPlace by viewModel.showAddPlace.collectAsState()
+    if (showAddPlace) {
+        val addPlaceUiState by viewModel.addPlaceUiState.collectAsState()
+        ModalBottomSheet(
+            onDismissRequest = viewModel::onDismissAddPlaceSheet,
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = EonjeColors.surface,
+        ) {
+            AddPlaceSheetContent(
+                uiState = addPlaceUiState,
+                onQueryChange = viewModel::onAddPlaceQueryChange,
+                onSelectCandidate = viewModel::onAddPlaceCandidateSelected,
+            )
+        }
+    }
 
     if (uiState.folderPickerForPlaceId != null) {
         ModalBottomSheet(
@@ -173,6 +193,7 @@ fun HomeScreen(
                 selectedFolderId = uiState.folderAssignSelectedFolderId,
                 onToggleFolder = viewModel::onToggleFolderAssignSelection,
                 onSave = viewModel::onSaveFolderAssign,
+                onDeleteFolder = viewModel::onDeleteFolder,
             )
         }
 
@@ -246,9 +267,9 @@ private fun HomeContent(
     onSelectFolderFilter: (FolderFilter) -> Unit,
     onOpenFolderPicker: (String) -> Unit,
     onOpenFolderAssign: (String) -> Unit,
-    onDeletePlace: (String) -> Unit,
-    onDirectionsClick: () -> Unit,
     onOpenCreateFolderSheet: () -> Unit,
+    onOpenAddPlaceSheet: () -> Unit,
+    onDeleteFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -301,14 +322,6 @@ private fun HomeContent(
             onPlaceClick = onSelectPlace,
             modifier = Modifier.fillMaxSize(),
         )
-        SearchBar(
-            query = uiState.searchQuery,
-            onQueryChange = onSearchQueryChange,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .padding(20.dp, 16.dp, 20.dp, 0.dp),
-        )
 
         val sheetHeightDp = with(density) { (containerHeightPx * SHEET_FULL_FRACTION).toDp() }
             .let { if (containerHeightPx > 0f) it else (screenHeightDp * SHEET_FULL_FRACTION).dp }
@@ -333,31 +346,19 @@ private fun HomeContent(
                         posts = uiState.selectedPlacePosts,
                         onClose = { onSelectPlace(null) },
                         onOpenFolderAssign = { onOpenFolderAssign(highlighted.id) },
-                        onDeletePlace = { onDeletePlace(highlighted.id) },
-                        onDirectionsClick = onDirectionsClick,
                     )
                 } else {
                     PlaceListSheetContent(
                         sheetState = sheetState,
                         uiState = uiState,
+                        onSearchQueryChange = onSearchQueryChange,
                         onSelectFolderFilter = onSelectFolderFilter,
                         onPlaceClick = onSelectPlace,
                         onOpenFolderPicker = onOpenFolderPicker,
+                        onAddFolder = onOpenCreateFolderSheet,
+                        onAddPlace = onOpenAddPlaceSheet,
+                        onDeleteFolder = onDeleteFolder,
                     )
-                }
-            }
-
-            // 폴더 추가는 목록 모드에서, 시트가 접힘(Peek)보다 올라와 있을 때만 보인다.
-            if (!isDetailMode && sheetState.currentValue != SheetStop.Peek) {
-                FloatingActionButton(
-                    onClick = onOpenCreateFolderSheet,
-                    containerColor = EonjeColors.accent,
-                    contentColor = EonjeColors.onAccent,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-20).dp, y = (-28).dp),
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "폴더 추가")
                 }
             }
         }
@@ -430,12 +431,17 @@ private fun rememberSheetNestedScrollConnection(
 }
 
 @Composable
-private fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "가게 검색",
+) {
     Row(
         modifier = modifier
             .height(52.dp)
             .clip(RoundedCornerShape(26.dp))
-            .background(EonjeColors.surface.copy(alpha = 0.94f))
+            .background(EonjeColors.surfaceVariant)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -443,7 +449,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: 
         Icon(Icons.Filled.Search, contentDescription = null, tint = EonjeColors.textMuted, modifier = Modifier.size(20.dp))
         Box(modifier = Modifier.weight(1f)) {
             if (query.isEmpty()) {
-                Text("가게 검색", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+                Text(placeholder, style = Typography.bodyMedium, color = EonjeColors.textMuted)
             }
             BasicTextField(
                 value = query,
@@ -468,6 +474,76 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: 
 }
 
 /**
+ * 카카오 로컬 검색으로 게시물 없이 장소를 바로 추가하는 시트. 결과를 탭하면 바로 저장되고 시트가
+ * 닫힌다 — 같은 카카오 장소가 이미 저장돼 있으면 [PlaceRepository.save]가 새로 만들지 않고 재사용한다.
+ */
+@Composable
+private fun AddPlaceSheetContent(
+    uiState: AddPlaceUiState,
+    onQueryChange: (String) -> Unit,
+    onSelectCandidate: (PlaceCandidate) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 520.dp)
+            .padding(20.dp, 4.dp, 20.dp, 22.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("장소 직접 추가", style = Typography.titleLarge, color = EonjeColors.textPrimary)
+        SearchBar(
+            query = uiState.query,
+            onQueryChange = onQueryChange,
+            placeholder = "장소 검색",
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Box(modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 120.dp)) {
+            when {
+                uiState.isSearching -> Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = EonjeColors.accent)
+                }
+                uiState.searchError != null -> Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text(uiState.searchError, style = Typography.bodyMedium, color = EonjeColors.warning)
+                }
+                uiState.query.isBlank() -> Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("추가할 장소를 검색해보세요", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+                }
+                uiState.results.isEmpty() -> Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("검색 결과가 없어요", style = Typography.bodyMedium, color = EonjeColors.textMuted)
+                }
+                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(uiState.results, key = { it.kakaoPlaceId }) { candidate ->
+                        AddPlaceCandidateRow(candidate = candidate, onClick = { onSelectCandidate(candidate) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddPlaceCandidateRow(candidate: PlaceCandidate, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(EonjeColors.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(14.dp, 13.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(candidate.name, style = Typography.titleMedium, color = EonjeColors.textPrimary)
+            Text(candidate.address, style = Typography.bodySmall, color = EonjeColors.textMuted)
+            if (!candidate.category.isNullOrBlank()) {
+                Text(candidate.category, style = Typography.labelSmall, color = EonjeColors.textTertiary)
+            }
+        }
+    }
+}
+
+/**
  * 시트 목록 모드: 폴더 탭 한 줄 + 장소 카드 리스트. peek 상태에서는 탭 줄만 보인다.
  * 핸들뿐 아니라 폴더 탭 줄도 그 자체로 드래그 대상이다 — 가로 스크롤만 되는 영역이라
  * nestedScroll로는 세로 드래그가 시트에 전달되지 않아서, 헤더 전체를 직접 anchoredDraggable에 건다.
@@ -476,14 +552,46 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: 
 private fun PlaceListSheetContent(
     sheetState: AnchoredDraggableState<SheetStop>,
     uiState: HomeUiState,
+    onSearchQueryChange: (String) -> Unit,
     onSelectFolderFilter: (FolderFilter) -> Unit,
     onPlaceClick: (String) -> Unit,
     onOpenFolderPicker: (String) -> Unit,
+    onAddFolder: () -> Unit,
+    onAddPlace: () -> Unit,
+    onDeleteFolder: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxWidth().anchoredDraggable(sheetState, Orientation.Vertical)) {
             SheetHandle()
-            FolderTabsRow(folders = uiState.folders, selected = uiState.folderFilter, onSelect = onSelectFolderFilter)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(20.dp, 0.dp, 20.dp, 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SearchBar(
+                    query = uiState.searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    modifier = Modifier.weight(1f),
+                )
+                Box(
+                    modifier = Modifier
+                        .height(52.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(EonjeColors.accent)
+                        .clickable(onClick = onAddPlace)
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("장소 추가", style = Typography.labelMedium, color = EonjeColors.onAccent)
+                }
+            }
+            FolderTabsRow(
+                folders = uiState.folders,
+                selected = uiState.folderFilter,
+                onSelect = onSelectFolderFilter,
+                onAddFolder = onAddFolder,
+                onDeleteFolder = onDeleteFolder,
+            )
         }
         Box(
             modifier = Modifier
@@ -501,13 +609,22 @@ private fun PlaceListSheetContent(
 }
 
 @Composable
-private fun FolderTabsRow(folders: List<FolderEntity>, selected: FolderFilter, onSelect: (FolderFilter) -> Unit) {
+private fun FolderTabsRow(
+    folders: List<FolderEntity>,
+    selected: FolderFilter,
+    onSelect: (FolderFilter) -> Unit,
+    onAddFolder: () -> Unit,
+    onDeleteFolder: (String) -> Unit,
+) {
+    var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(20.dp, 4.dp, 20.dp, 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         FilterChip(label = "전체", selected = selected is FolderFilter.All, onClick = { onSelect(FolderFilter.All) })
         folders.forEach { folder ->
@@ -515,6 +632,7 @@ private fun FolderTabsRow(folders: List<FolderEntity>, selected: FolderFilter, o
                 label = folder.name,
                 selected = selected is FolderFilter.ByFolder && selected.folderId == folder.id,
                 onClick = { onSelect(FolderFilter.ByFolder(folder.id)) },
+                onLongClick = { folderPendingDelete = folder },
             )
         }
         FilterChip(
@@ -522,11 +640,45 @@ private fun FolderTabsRow(folders: List<FolderEntity>, selected: FolderFilter, o
             selected = selected is FolderFilter.Unclassified,
             onClick = { onSelect(FolderFilter.Unclassified) },
         )
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .border(1.dp, EonjeColors.border, CircleShape)
+                .clickable(onClick = onAddFolder),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "폴더 추가", tint = EonjeColors.textSecondary, modifier = Modifier.size(18.dp))
+        }
+    }
+
+    val target = folderPendingDelete
+    if (target != null) {
+        AlertDialog(
+            onDismissRequest = { folderPendingDelete = null },
+            title = { Text("'${target.name}' 폴더를 삭제할까요?") },
+            text = { Text("이 폴더에 있던 장소는 미분류로 이동해요.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteFolder(target.id)
+                    folderPendingDelete = null
+                }) {
+                    Text("삭제", color = EonjeColors.warning)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderPendingDelete = null }) {
+                    Text("취소")
+                }
+            },
+            containerColor = EonjeColors.surface,
+        )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val shape = RoundedCornerShape(17.dp)
     Box(
         modifier = Modifier
@@ -534,7 +686,7 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
             .clip(shape)
             .background(if (selected) EonjeColors.accent else EonjeColors.surfaceVariant)
             .then(if (!selected) Modifier.border(1.dp, EonjeColors.border, shape) else Modifier)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -597,12 +749,12 @@ private fun PlaceCardList(
 /**
  * 시트 상세 모드: 마커든 리스트 카드든 장소를 탭하면 이 내용으로 바뀌면서 Mid(화면 40%)까지
  * 올라온다. 더 드래그하면 Full로 펼쳐져서 게시물까지 다 보인다. 이름 줄 오른쪽의 마커 버튼으로
- * 폴더를 바꾼다(체크 후 저장 — [FolderAssignSheetContent] 참고). 휴지통 버튼은 장소 자체를
- * 지운다 — 되돌릴 수 없어서 확인 다이얼로그를 거친다.
- * 이름·주소가 보이는 헤더도 목록 모드의 폴더 탭 줄처럼 직접 anchoredDraggable에 걸어서,
- * 핸들이 아니어도 그 위를 잡고 드래그하면 시트가 오르내리게 한다.
+ * 폴더를 바꾼다(체크 후 저장 — [FolderAssignSheetContent] 참고). 체크박스를 전부 해제하고
+ * 저장하면 "저장삭제"로 배정이 지워지므로 장소 자체를 지우는 별도 버튼은 두지 않는다.
+ * 핸들만 고정해서 드래그 전용으로 두고, 이름부터 게시물 목록까지는 전부 한 스크롤 영역에 넣는다 —
+ * 스크롤이 맨 위에 닿으면 nestedScroll이 남는 드래그를 시트로 넘겨서, 어디를 잡고 끌어도
+ * 시트가 오르내리는 동작은 그대로 유지된다.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlaceDetailSheetContent(
     sheetState: AnchoredDraggableState<SheetStop>,
@@ -610,41 +762,11 @@ private fun PlaceDetailSheetContent(
     posts: List<HomePlacePost>,
     onClose: () -> Unit,
     onOpenFolderAssign: () -> Unit,
-    onDeletePlace: () -> Unit,
-    onDirectionsClick: () -> Unit,
 ) {
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
+    val context = LocalContext.current
     Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .anchoredDraggable(sheetState, Orientation.Vertical)
-                .padding(20.dp, 0.dp, 20.dp, 0.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        Box(modifier = Modifier.fillMaxWidth().anchoredDraggable(sheetState, Orientation.Vertical)) {
             SheetHandle()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    place.name,
-                    style = Typography.headlineMedium,
-                    color = EonjeColors.textPrimary,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = onOpenFolderAssign) {
-                    FolderMarkerIcon(color = place.folderColor, icon = place.folderIcon)
-                }
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(Icons.Filled.DeleteOutline, contentDescription = "장소 삭제", tint = EonjeColors.textSecondary)
-                }
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Filled.Close, contentDescription = "닫기", tint = EonjeColors.textSecondary)
-                }
-            }
-            if (place.category.isNotBlank()) {
-                Text(place.category, style = Typography.bodyMedium, color = EonjeColors.textTertiary)
-            }
-            Text(place.address, style = Typography.bodyMedium, color = EonjeColors.textMuted)
         }
 
         Column(
@@ -653,25 +775,73 @@ private fun PlaceDetailSheetContent(
                 .fillMaxWidth()
                 .nestedScroll(rememberSheetNestedScrollConnection(sheetState))
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp, 12.dp, 20.dp, 24.dp),
+                .padding(20.dp, 0.dp, 20.dp, 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column(
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(
+                        place.name,
+                        style = Typography.headlineMedium,
+                        color = EonjeColors.textPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // IconButton은 내부에서 48dp 정사각형 안에 콘텐츠를 가운데 정렬해서, Row를 Top으로
+                    // 맞춰도 아이콘 자체는 아래로 밀려 보인다 — 제목 첫 줄에 맞춰 진짜로 위쪽에 붙이려고
+                    // 터치 영역만 확보한 Box에 TopCenter로 직접 배치한다.
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onOpenFolderAssign),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        FolderMarkerIcon(color = place.folderColor, icon = place.folderIcon)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .offset(x = 8.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onClose),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        Icon(Icons.Filled.Close, contentDescription = "닫기", tint = EonjeColors.textSecondary)
+                    }
+                }
+                if (place.category.isNotBlank()) {
+                    Text(place.category, style = Typography.bodyMedium, color = EonjeColors.textTertiary)
+                }
+                Text(place.address, style = Typography.bodyMedium, color = EonjeColors.textMuted)
+            }
+
+            PlaceholderImage(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(EonjeColors.surfaceVariant)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text("메모", style = Typography.labelSmall, color = EonjeColors.textMuted)
-                Text(place.memo.ifBlank { "메모가 없어요" }, style = Typography.bodyMedium, color = EonjeColors.textSecondary)
-            }
+                    .height(180.dp),
+                imageUrl = place.thumbnailUrl,
+                cornerRadius = 16.dp,
+                label = place.name,
+            )
 
             FilledPillButton(
                 text = "길찾기",
                 icon = Icons.Filled.Place,
-                onClick = onDirectionsClick,
+                onClick = {
+                    val lat = place.latitude
+                    val lng = place.longitude
+                    if (lat == null || lng == null) {
+                        Toast.makeText(context, "좌표 정보가 없어서 길찾기를 열 수 없어요", Toast.LENGTH_SHORT).show()
+                        return@FilledPillButton
+                    }
+                    // 카카오맵 공식 공유 링크 — 앱이 깔려 있으면 앱에서, 없으면 모바일 웹에서 길찾기가 열린다.
+                    val url = "https://map.kakao.com/link/to/${Uri.encode(place.name)},$lat,$lng"
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }.onFailure {
+                        Toast.makeText(context, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -685,28 +855,6 @@ private fun PlaceDetailSheetContent(
                 }
             }
         }
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("'${place.name}'을(를) 삭제할까요?") },
-            text = { Text("삭제하면 되돌릴 수 없어요. 저장된 게시물은 그대로 남아요.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteDialog = false
-                    onDeletePlace()
-                }) {
-                    Text("삭제", color = EonjeColors.warning)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("취소")
-                }
-            },
-            containerColor = EonjeColors.surface,
-        )
     }
 }
 
@@ -756,9 +904,9 @@ private fun HomeScreenListPreview() {
             onSelectFolderFilter = {},
             onOpenFolderPicker = {},
             onOpenFolderAssign = {},
-            onDeletePlace = {},
-            onDirectionsClick = {},
             onOpenCreateFolderSheet = {},
+            onOpenAddPlaceSheet = {},
+            onDeleteFolder = {},
         )
     }
 }
@@ -777,9 +925,9 @@ private fun HomeScreenDetailPreview() {
             onSelectFolderFilter = {},
             onOpenFolderPicker = {},
             onOpenFolderAssign = {},
-            onDeletePlace = {},
-            onDirectionsClick = {},
             onOpenCreateFolderSheet = {},
+            onOpenAddPlaceSheet = {},
+            onDeleteFolder = {},
         )
     }
 }
