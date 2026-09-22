@@ -17,4 +17,7 @@ interface PlaceRepository {
     /** folderId가 null이면 미분류로 되돌린다. */
     suspend fun assignFolder(placeId: String, folderId: String?)
     suspend fun assignFolderToPlaces(placeIds: List<String>, folderId: String?)
+
+    /** 장소를 지우고, 게시물과의 연결 정보도 함께 지운다. 게시물 자체는 남는다. */
+    suspend fun delete(placeId: String)
 }

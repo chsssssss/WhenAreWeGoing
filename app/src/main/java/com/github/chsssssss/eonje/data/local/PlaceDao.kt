@@ -28,4 +28,7 @@ interface PlaceDao {
 
     @Query("UPDATE places SET folderId = NULL WHERE folderId = :folderId")
     suspend fun clearFolder(folderId: String)
+
+    @Query("DELETE FROM places WHERE id = :id")
+    suspend fun delete(id: String)
 }

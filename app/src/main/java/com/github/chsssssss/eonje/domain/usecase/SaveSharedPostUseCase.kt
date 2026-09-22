@@ -1,15 +1,11 @@
 package com.github.chsssssss.eonje.domain.usecase
 
-import android.content.Context
-import androidx.glance.appwidget.updateAll
 import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.InstagramUrlParser
-import com.github.chsssssss.eonje.widget.InboxWidget
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
 
@@ -22,7 +18,6 @@ sealed interface SaveSharedPostResult {
 class SaveSharedPostUseCase @Inject constructor(
     private val repository: SavedPostRepository,
     private val workManager: WorkManager,
-    @ApplicationContext private val context: Context,
 ) {
     suspend operator fun invoke(sharedText: String): SaveSharedPostResult {
         val rawUrl = InstagramUrlParser.findUrl(sharedText)
@@ -53,7 +48,6 @@ class SaveSharedPostUseCase @Inject constructor(
             workManager.enqueue(CaptionParsingWorker.request(postId))
         }
 
-        InboxWidget().updateAll(context)
         return SaveSharedPostResult.Saved
     }
 }

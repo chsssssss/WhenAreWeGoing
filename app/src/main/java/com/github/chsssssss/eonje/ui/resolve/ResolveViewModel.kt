@@ -16,7 +16,7 @@ import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
-import com.github.chsssssss.eonje.widget.InboxWidget
+import com.github.chsssssss.eonje.widget.PlaceRecommendationWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
@@ -224,7 +224,7 @@ class ResolveViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true) }
             savePlace(candidate)
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
-            InboxWidget().updateAll(context)
+            PlaceRecommendationWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
             _events.send(ResolveEvent.Toast("${candidate.name} 저장됨"))
@@ -242,7 +242,7 @@ class ResolveViewModel @Inject constructor(
             toSave.forEach { group -> savePlace(group.selected!!) }
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
             extractedCandidateRepository.replaceForPost(postId, emptyList())
-            InboxWidget().updateAll(context)
+            PlaceRecommendationWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
             val message = if (toSave.size == 1) "${toSave.first().selected!!.name} 저장됨" else "${toSave.size}곳 저장됨"

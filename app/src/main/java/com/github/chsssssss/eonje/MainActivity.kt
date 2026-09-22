@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -21,6 +22,8 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.github.chsssssss.eonje.domain.model.ThemeMode
+import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import com.github.chsssssss.eonje.ui.components.BottomNavBar
 import com.github.chsssssss.eonje.ui.navigation.AppShellViewModel
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
@@ -28,14 +31,24 @@ import com.github.chsssssss.eonje.ui.navigation.EonjeNavHost
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var themePreferenceRepository: ThemePreferenceRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            EonjeTheme {
+            val themeMode by themePreferenceRepository.themeMode.collectAsState()
+            val darkTheme = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            EonjeTheme(darkTheme = darkTheme) {
                 EonjeApp()
             }
         }

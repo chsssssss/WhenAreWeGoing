@@ -8,6 +8,7 @@ import com.github.chsssssss.eonje.data.repository.KakaoLocalRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.LocationRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.PlaceRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.SavedPostRepositoryImpl
+import com.github.chsssssss.eonje.data.repository.ThemePreferenceRepositoryImpl
 import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
@@ -16,6 +17,7 @@ import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -58,4 +60,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindFolderRepository(impl: FolderRepositoryImpl): FolderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindThemePreferenceRepository(
+        impl: ThemePreferenceRepositoryImpl
+    ): ThemePreferenceRepository
 }

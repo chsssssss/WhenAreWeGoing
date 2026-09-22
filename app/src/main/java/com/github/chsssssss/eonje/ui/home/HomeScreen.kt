@@ -189,8 +189,10 @@ fun HomeScreen(
             containerColor = EonjeColors.surface,
         ) {
             FolderAssignSheetContent(
+                placeName = uiState.folderAssignForPlace?.name.orEmpty(),
                 folders = uiState.folders,
                 selectedFolderId = uiState.folderAssignSelectedFolderId,
+                willDeletePlace = uiState.folderAssignWillDeletePlace,
                 onToggleFolder = viewModel::onToggleFolderAssignSelection,
                 onSave = viewModel::onSaveFolderAssign,
                 onDeleteFolder = viewModel::onDeleteFolder,

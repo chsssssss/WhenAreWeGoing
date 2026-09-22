@@ -97,6 +97,10 @@ class PlaceRepositoryImplTest {
         override suspend fun clearFolder(folderId: String) {
             places.replaceAll { _, place -> if (place.folderId == folderId) place.copy(folderId = null) else place }
         }
+
+        override suspend fun delete(id: String) {
+            places.remove(id)
+        }
     }
 
     private class FakePostPlaceCrossRefDao : PostPlaceCrossRefDao {
@@ -113,5 +117,9 @@ class PlaceRepositoryImplTest {
 
         override suspend fun postIdsForPlace(placeId: String): List<String> =
             refs.filter { it.placeId == placeId }.map { it.postId }
+
+        override suspend fun deleteForPlace(placeId: String) {
+            refs.removeAll { it.placeId == placeId }
+        }
     }
 }

@@ -18,3 +18,7 @@ build/
 .externalNativeBuild
 .cxx
 local.properties
+
+# 릴리스 서명 키스토어 — 실제 파일은 ~/.android/ 밖(리포 밖)에 두지만, 혹시 안에 두더라도 커밋되지 않도록 방어
+*.jks
+*.keystore

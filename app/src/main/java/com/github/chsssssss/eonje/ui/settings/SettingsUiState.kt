@@ -1,3 +1,8 @@
 package com.github.chsssssss.eonje.ui.settings
 
-data object SettingsUiState
+import com.github.chsssssss.eonje.domain.model.ThemeMode
+
+data class SettingsUiState(
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val isSeeding: Boolean = false,
+)

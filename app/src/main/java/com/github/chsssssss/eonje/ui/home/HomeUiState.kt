@@ -56,6 +56,10 @@ data class HomeUiState(
 
     /** 저장하지 않은 채 닫으려고 하면 경고를 띄워야 하는지 — 원래 폴더와 체크 상태가 다른 경우. */
     val folderAssignHasChanges: Boolean get() = folderAssignForPlace?.folderId != folderAssignSelectedFolderId
+
+    /** 원래도 미분류였던 장소를 체크 안 한 채로 저장하면 더 지울 폴더 배정이 없다 — 이땐 장소 자체를 지운다. */
+    val folderAssignWillDeletePlace: Boolean
+        get() = folderAssignForPlace?.folderId == null && folderAssignSelectedFolderId == null
 }
 
 /** 게시물 없이 카카오 로컬 검색으로 장소를 바로 추가하는 시트의 상태 — 메인 [HomeUiState]와는 별도로 관리한다. */

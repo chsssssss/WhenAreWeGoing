@@ -56,7 +56,7 @@ com.github.chsssssss.eonje/
 │  ├─ inbox/
 │  ├─ resolve/         정리 화면 (단일/다중 모드)
 │  ├─ components/      화면 간 공유 컴포저블 (FolderPicker, PlaceholderImage, BottomNavBar 등)
-│  ├─ settings/        지금은 빈 자리만 유지 (5단계 참고)
+│  ├─ settings/        테마(라이트/다크/시스템)·개인정보처리방침·버전 정보 (8단계 참고)
 │  └─ theme/
 └─ share/              ShareReceiverActivity
 ```
@@ -135,7 +135,7 @@ enum class UnresolvedReason {
 | HomeScreen | 지도 + 커스텀 바텀시트(목록/상세 모드). 장소 상세는 별도 화면이 아니라 이 시트의 상세 모드로 통합돼 있다(과거 PlaceDetailScreen은 삭제됨) |
 | InboxScreen | 미확정 게시물 카드 목록. 카드별 "후보 N곳" / "직접 찾기" 칩 |
 | ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색. 폴더 선택(선택사항, 다중 모드는 일괄 배정) |
-| SettingsScreen | 지금은 빈 자리만 유지 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어냄) |
+| SettingsScreen | 화면 테마(시스템 설정/라이트/다크), 개인정보처리방침 링크, 버전 정보 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어낸 뒤, 8단계에서 다시 채움) |
 
 하단 네비게이션 3탭: 홈 / 인박스(배지) / 설정
 
@@ -267,7 +267,7 @@ enum class UnresolvedReason {
 
 ### 4단계 — 다듬기 (완료)
 
-- [x] 위젯 — 인박스 정리 대기 개수를 보여주는 홈 화면 위젯
+- [x] 위젯 — 홈 화면 위젯 (7단계에서 인박스 정리 대기 개수 표시에서 랜덤 장소 추천으로 교체됨)
 - [x] 정리 알림 — 정리 안 된 게시물이 있으면 주기적으로(7일마다) 알림
 - [x] 오래된 미확정 항목 정리 제안 — 30일 넘은 항목을 인박스에서 일괄 삭제 제안
 
@@ -300,6 +300,32 @@ enum class UnresolvedReason {
 - [x] 카카오 로컬 검색으로 게시물 없이 장소를 바로 추가하는 기능 추가 — 저장은 `PlaceRepository.save`(kakaoPlaceId 기준 upsert)를 그대로 재사용
 - [x] 길찾기 버튼을 카카오맵 공유 링크로 연결
 - [x] `AnchoredDraggableState.settle()`에 `snapAnimationSpec`을 직접 안 넘겨서 빠른 플링 시 나던 크래시 수정
+
+### 7단계 — 위젯을 랜덤 장소 추천으로 교체 (완료, 2026-09-21)
+
+인박스 정리 대기 개수만 보여주던 홈 화면 위젯(`InboxWidget`)을 걷어내고, 저장된 장소(RESOLVED) 중 하나를 랜덤으로 보여주는 `PlaceRecommendationWidget`으로 교체했다. "오늘 뭐 먹지" 같은 상황에서 인박스 상태보다 장소 추천이 더 쓸모 있다고 판단.
+
+- [x] `PlaceRecommendationWidget` 추가 — `PlaceRepository.observeAll()`에서 `status == RESOLVED`이고 이름이 있는 장소 중 랜덤 하나를 뽑아 표시
+- [x] "다른 곳 보기" 버튼(`ShuffleRecommendationAction`, Glance `ActionCallback`)으로 위젯을 다시 그려 새 랜덤 장소를 뽑음. 별도 상태 저장 없이 `provideGlance`가 매번 새로 랜덤을 뽑는 방식이라 단순함
+- [x] 위젯 전체 탭은 앱(`MainActivity`) 실행으로 연결 — 특정 장소로 바로 딥링크하는 기능은 없음(홈 화면에 그런 내비게이션 진입점 자체가 아직 없음)
+- [x] 기존 `InboxWidget().updateAll(context)` 호출부 정리 — 장소가 RESOLVED로 확정되는 두 지점(`ResolveViewModel`의 단일/다중 확정)만 위젯을 갱신하도록 남기고, 인박스 게시물 저장·삭제 시점의 호출은 랜덤 장소 목록과 무관해 제거
+
+### 8단계 — SettingsScreen 채우기 + 스토어 출시 준비 (완료, 2026-09-22)
+
+5단계에서 계정 관리 기능을 걷어내며 빈 자리만 남았던 SettingsScreen을 플레이스토어 공개 출시에 필요한 최소 항목으로 채웠다.
+
+- [x] `ThemeMode`(SYSTEM/LIGHT/DARK) 도입 — `ThemePreferenceRepository`(SharedPreferences 기반, `data/repository/ThemePreferenceRepositoryImpl`)가 값을 들고 있고, `MainActivity`가 이를 구독해 `EonjeTheme(darkTheme = ...)`에 반영. 다크/라이트 팔레트 자체는 이미 `EonjeDarkPalette`/`EonjeLightPalette`로 존재했고 이번에 사용자가 고를 수 있는 진입점만 추가한 것
+- [x] SettingsScreen에 "화면" 섹션(테마 3단 선택 칩)과 "정보" 섹션(개인정보처리방침 링크, 문의하기, 버전 정보) 추가. 개인정보처리방침은 Notion 페이지로, `ACTION_VIEW`로 외부 브라우저를 연다(HomeScreen의 길찾기·원본 게시물 열기와 동일한 패턴). 문의하기는 `ACTION_SENDTO`(mailto:)로 개발자 이메일(chaheesun42@gmail.com)을 받는사람으로 채워 메일 앱을 연다
+- [x] 오픈소스 라이선스 화면은 이번 범위에서 보류 — 필요해지면 추가
+- [x] `data_extraction_rules.xml`/`backup_rules.xml`에 `files/thumbnails` 제외 규칙 추가 — 기존엔 둘 다 Android Studio 기본 템플릿(주석 처리된 TODO)이라 `allowBackup="true"` 상태에서 `ThumbnailStore`가 받아두는 게시물 이미지까지 Auto Backup(앱당 25MB 한도) 대상이었다. 이미지가 쌓이면 한도를 넘겨 진짜 지켜야 할 Room DB(SavedPost/Place)까지 백업이 조용히 실패할 수 있어서 이미지 캐시만 제외
+- [x] Galaxy Note9(API 29) 실기기에 디버그 빌드 설치해 테마 전환(즉시 반영+재실행 후 유지 확인)·개인정보처리방침 링크(브라우저 선택 창 정상 표시)·문의하기(메일 작성 화면에 제목 정상 채워짐)·인박스 화면까지 스모크 테스트, logcat에 에러 없음 확인(2026-09-22)
+
+**스토어 출시 관련, 코드로 처리되지 않는 항목** — Play Console에서 별도로 해야 함: 개인정보처리방침 URL을 앱 콘텐츠(App content) 섹션에 등록, 데이터 안전(Data safety) 설문 작성(캡션·이미지·위치 등 어떤 데이터를 어떻게 쓰는지), 타겟 연령층·콘텐츠 등급 설문. 이 앱은 로그인/계정 개념이 없어 "계정 삭제" 관련 요구사항은 해당 없음.
+
+**출시 전 남은 것 — 실기기 점검 중 발견 (2026-09-22)**
+- [ ] **앱 아이콘이 아직 Android Studio 기본 템플릿(녹색 그리드 로봇)이다** — `ic_launcher_foreground.xml`/`ic_launcher_background.xml`이 실제 브랜드 아이콘으로 안 바뀌어 있음. 플레이스토어에 이대로 올리면 안 되는 가장 시급한 항목
+- [x] 릴리스 서명(signing) 설정 — `keytool`로 업로드용 키스토어(`~/.android/eonje-upload-keystore.jks`, PKCS12, alias `eonje-upload`, 유효기간 30년)를 생성해 리포 밖에 두고, 경로·비밀번호는 `local.properties`(기존 카카오/Firebase 키와 같은 패턴)에 `RELEASE_KEYSTORE_PATH`/`RELEASE_KEYSTORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD`로 추가. `app/build.gradle.kts`는 이 값이 있을 때만 `signingConfigs["release"]`를 만들어 `release` 빌드 타입에 연결하므로, 키스토어가 없는 환경(새 클론 등)에서도 다른 태스크는 그대로 돌아가고 `assembleRelease`/`bundleRelease`만 명확한 에러로 실패한다. `.gitignore`에 `*.jks`/`*.keystore`도 방어적으로 추가. `assembleRelease`로 만든 APK를 `apksigner verify`로 서명 확인 완료 — **키스토어 파일과 비밀번호는 이 기기에만 있으니 최초 Play Console 업로드 전에 반드시 별도로 안전하게 백업해둘 것** (분실 시 이 업로드 키로는 더 이상 업데이트를 올릴 수 없음)
+- [ ] `isMinifyEnabled = false`로 릴리스 빌드에 R8이 꺼져 있음 — 출시 필수는 아니지만, 켜면 APK 용량이 줄고 코드 난독화가 돼서 켜는 걸 권장. 켜려면 Room/Retrofit/kotlinx.serialization/Firebase/Kakao SDK용 keep 규칙을 `proguard-rules.pro`에 추가로 채워야 함(지금은 템플릿 그대로 비어 있음)
 
 ## 코딩 컨벤션
 

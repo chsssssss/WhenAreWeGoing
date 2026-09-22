@@ -58,14 +58,14 @@
         </activity>
 
         <receiver
-            android:name=".widget.InboxWidgetReceiver"
+            android:name=".widget.PlaceRecommendationWidgetReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/inbox_widget_info" />
+                android:resource="@xml/place_recommendation_widget_info" />
         </receiver>
     </application>
 

@@ -77,6 +77,24 @@ android {
         )
     }
 
+    // 릴리스 서명 키스토어는 리포 밖(~/.android/)에 두고 local.properties로 경로·비밀번호를 읽는다 — 키스토어 자체와
+    // local.properties 둘 다 git에 안 올라간다. local.properties에 항목이 없으면(예: 새로 클론한 환경) 서명 설정을
+    // 아예 안 만들어서 release 이외 태스크(compile, lint 등)는 그대로 동작하고, assembleRelease/bundleRelease만
+    // "키스토어를 못 찾았다"는 명확한 에러로 실패한다.
+    val releaseKeystorePath = localProperties.getProperty("RELEASE_KEYSTORE_PATH", "")
+    val hasReleaseSigning = releaseKeystorePath.isNotBlank() && file(releaseKeystorePath).exists()
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = localProperties.getProperty("RELEASE_KEYSTORE_PASSWORD", "")
+                keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS", "")
+                keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD", "")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -84,6 +102,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

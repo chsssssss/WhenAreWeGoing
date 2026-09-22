@@ -1,6 +1,6 @@
 package com.github.chsssssss.eonje.widget
 
-import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -11,6 +11,6 @@ import dagger.hilt.components.SingletonComponent
  */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
-interface InboxWidgetEntryPoint {
-    fun savedPostRepository(): SavedPostRepository
+interface PlaceRecommendationWidgetEntryPoint {
+    fun placeRepository(): PlaceRepository
 }

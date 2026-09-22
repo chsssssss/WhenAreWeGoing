@@ -193,14 +193,17 @@ private fun FolderRow(label: String, selected: Boolean, onClick: () -> Unit, onD
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderAssignSheetContent(
+    placeName: String,
     folders: List<FolderEntity>,
     selectedFolderId: String?,
+    willDeletePlace: Boolean,
     onToggleFolder: (String) -> Unit,
     onSave: () -> Unit,
     onDeleteFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+    var showDeletePlaceConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -226,8 +229,30 @@ fun FolderAssignSheetContent(
 
         FilledPillButton(
             text = if (selectedFolderId == null) "저장삭제" else "저장",
-            onClick = onSave,
+            onClick = { if (willDeletePlace) showDeletePlaceConfirm = true else onSave() },
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    if (showDeletePlaceConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeletePlaceConfirm = false },
+            title = { Text("'$placeName'을(를) 삭제할까요?") },
+            text = { Text("이미 미분류라 지울 폴더 배정이 없어요. 저장하면 장소 자체가 삭제되고 되돌릴 수 없어요.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeletePlaceConfirm = false
+                    onSave()
+                }) {
+                    Text("삭제", color = EonjeColors.warning)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeletePlaceConfirm = false }) {
+                    Text("취소")
+                }
+            },
+            containerColor = EonjeColors.surface,
         )
     }
 

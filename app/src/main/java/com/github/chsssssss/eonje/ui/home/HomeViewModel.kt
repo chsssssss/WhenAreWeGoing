@@ -261,8 +261,17 @@ class HomeViewModel @Inject constructor(
     /** 아무 폴더도 체크 안 된 채로 저장하면 배정을 지우는 것과 같다(저장삭제). */
     fun onSaveFolderAssign() {
         val placeId = folderAssignForPlaceId.value ?: return
-        val folderId = folderAssignSelectedFolderId.value
-        viewModelScope.launch { placeRepository.assignFolder(placeId, folderId) }
+        val newFolderId = folderAssignSelectedFolderId.value
+        val originalFolderId = uiState.value.places.firstOrNull { it.id == placeId }?.folderId
+        viewModelScope.launch {
+            if (newFolderId == null && originalFolderId == null) {
+                // 이미 미분류였던 장소를 체크 없이 저장하면 더 지울 폴더가 없다 — 장소 자체를 지운다.
+                placeRepository.delete(placeId)
+                if (selectedPlaceId.value == placeId) selectedPlaceId.value = null
+            } else {
+                placeRepository.assignFolder(placeId, newFolderId)
+            }
+        }
         folderAssignForPlaceId.value = null
     }
 

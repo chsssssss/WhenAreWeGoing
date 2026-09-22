@@ -1,7 +1,6 @@
 package com.github.chsssssss.eonje.ui.inbox
 
 import android.content.Context
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
@@ -10,7 +9,6 @@ import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
-import com.github.chsssssss.eonje.widget.InboxWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,7 +73,6 @@ class InboxViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteByIds(staleIds)
             showCleanupDialog.update { false }
-            InboxWidget().updateAll(context)
         }
     }
 
@@ -92,7 +89,6 @@ class InboxViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteByIds(listOf(postId))
             pendingDeleteId.update { null }
-            InboxWidget().updateAll(context)
         }
     }
 
