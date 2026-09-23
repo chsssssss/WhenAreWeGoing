@@ -2,7 +2,6 @@ package com.github.chsssssss.eonje.ui.settings
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,18 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -41,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.BuildConfig
 import com.github.chsssssss.eonje.domain.model.ThemeMode
-import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
 import com.github.chsssssss.eonje.ui.theme.Typography
@@ -56,31 +47,20 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        viewModel.toastMessages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
-    }
 
     SettingsContent(
         themeMode = uiState.themeMode,
         onThemeModeSelected = viewModel::onThemeModeSelected,
-        isSeeding = uiState.isSeeding,
-        onSeedDummyData = viewModel::onSeedDummyData,
         modifier = modifier,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsContent(
     themeMode: ThemeMode,
     onThemeModeSelected: (ThemeMode) -> Unit,
-    isSeeding: Boolean,
-    onSeedDummyData: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Column(
@@ -119,37 +99,6 @@ private fun SettingsContent(
                 SettingsInfoRow(label = "버전 정보", value = BuildConfig.VERSION_NAME)
             }
         }
-
-        // 스크린샷 촬영용 더미 데이터 — 디버그 빌드에서만 노출된다(DaeguDummyDataSeeder 참고).
-        if (BuildConfig.DEBUG) {
-            FilledPillButton(
-                text = if (isSeeding) "채우는 중…" else "디버그: 대구 더미 데이터 채우기",
-                onClick = { if (!isSeeding) showConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-
-    if (showConfirm) {
-        AlertDialog(
-            onDismissRequest = { showConfirm = false },
-            title = { Text("현재 데이터를 모두 지울까요?") },
-            text = { Text("저장된 장소·폴더·게시물이 전부 지워지고 대구 더미 데이터로 채워져요. 되돌릴 수 없어요.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showConfirm = false
-                    onSeedDummyData()
-                }) {
-                    Text("채우기", color = EonjeColors.warning)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirm = false }) {
-                    Text("취소")
-                }
-            },
-            containerColor = EonjeColors.surface,
-        )
     }
 }
 
@@ -269,8 +218,6 @@ private fun SettingsScreenPreview() {
         SettingsContent(
             themeMode = ThemeMode.SYSTEM,
             onThemeModeSelected = {},
-            isSeeding = false,
-            onSeedDummyData = {},
         )
     }
 }
