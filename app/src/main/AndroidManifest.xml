@@ -42,6 +42,14 @@
                 tools:node="remove" />
         </provider>
 
+        <!-- Firebase 앱은 EonjeApplication에서 FirebaseOptions로 직접 초기화한다. 이 프로바이더를 남겨두면
+             Analytics용 google_app_id 리소스(wherewegoing)를 근거로 기본 FirebaseApp을 먼저 만들어버려서,
+             기본 앱이어야 하는 Gemini 프로젝트 초기화가 건너뛰어진다. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+
         <activity
             android:name=".share.ShareReceiverActivity"
             android:exported="true"

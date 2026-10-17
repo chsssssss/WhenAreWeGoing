@@ -3,7 +3,10 @@ package com.github.chsssssss.eonje.data.repository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Log
 import com.github.chsssssss.eonje.BuildConfig
+import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
 import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
 import com.google.firebase.Firebase
@@ -12,9 +15,14 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.QuotaExceededException
+import com.google.firebase.ai.type.RequestTimeoutException
 import com.google.firebase.ai.type.Schema
+import com.google.firebase.ai.type.ServerException
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.logEvent
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,6 +41,7 @@ import javax.inject.Inject
 // https://ai.google.dev/gemini-api/docs/deprecations 에서 최신 모델 ID 확인할 것.
 private const val GEMINI_MODEL_NAME = "gemini-3.6-flash"
 private const val MAX_IMAGES = 3
+private const val TAG = "CaptionParsing"
 
 @Serializable
 private data class ExtractedPlaceDto(
@@ -50,6 +59,7 @@ class CaptionParsingRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
     private val json: Json,
+    private val analytics: FirebaseAnalytics,
 ) : CaptionParsingRepository {
 
     private val onDeviceModel by lazy { Generation.getClient() }
@@ -67,7 +77,7 @@ class CaptionParsingRepositoryImpl @Inject constructor(
             if (onDeviceModel.checkStatus() != FeatureStatus.AVAILABLE) return null
             val response = onDeviceModel.generateContent(buildExtractionPrompt(caption))
             val text = response.candidates.firstOrNull()?.text ?: return null
-            parsePlaces(text)
+            parsePlaces(text)?.also { logParse(Events.Engine.NANO, Events.Stage.CAPTION, it.size) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -86,12 +96,23 @@ class CaptionParsingRepositoryImpl @Inject constructor(
                 bitmaps.forEach { image(it) }
             }
             val response = model.generateContent(prompt)
-            val text = response.text ?: return Result.success(emptyList())
-            Result.success(parsePlaces(text).orEmpty())
+            val places = response.text?.let { parsePlaces(it) }.orEmpty()
+            val stage = if (imageUrls.isEmpty()) Events.Stage.CAPTION else Events.Stage.IMAGE
+            logParse(Events.Engine.CLOUD, stage, places.size)
+            Result.success(places)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Log.w(TAG, "Gemini 클라우드 파싱 실패", e)
             Result.failure(e.asRetryableNetworkFailure())
+        }
+    }
+
+    private fun logParse(engine: String, stage: String, extractedCount: Int) {
+        analytics.logEvent(Events.CAPTION_PARSE) {
+            param(Events.Param.ENGINE, engine)
+            param(Events.Param.STAGE, stage)
+            param(Events.Param.EXTRACTED_COUNT, extractedCount.toLong())
         }
     }
 
@@ -112,7 +133,13 @@ class CaptionParsingRepositoryImpl @Inject constructor(
         val app = FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
             ?: FirebaseApp.initializeApp(context, options)
 
-        return Firebase.ai(app = app, backend = GenerativeBackend.googleAI()).generativeModel(
+        // fir-gemini는 Firebase AI Logic에 App Check 재생 보호가 켜져 있어서, 재사용 가능한 일반 토큰을 보내면
+        // "Firebase App Check token is invalid"(콘솔 지표상 "재사용된 토큰")로 전부 거부된다. 호출마다 1회용 토큰을 받는다.
+        return Firebase.ai(
+            app = app,
+            backend = GenerativeBackend.googleAI(),
+            useLimitedUseAppCheckTokens = true,
+        ).generativeModel(
             modelName = GEMINI_MODEL_NAME,
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -121,8 +148,11 @@ class CaptionParsingRepositoryImpl @Inject constructor(
         )
     }
 
+    /** [url]은 원격 URL이거나 ThumbnailStore가 받아둔 file:// 경로다. */
     private suspend fun downloadBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
+            val uri = Uri.parse(url)
+            if (uri.scheme == "file") return@runCatching BitmapFactory.decodeFile(uri.path)
             okHttpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 response.body?.byteStream()?.use { BitmapFactory.decodeStream(it) }
             }
@@ -150,8 +180,19 @@ class CaptionParsingRepositoryImpl @Inject constructor(
         $caption
     """.trimIndent()
 
-    /** Firebase SDK가 던지는 예외 타입이 확실치 않아, 원인 체인을 훑어 IOException이면 그걸로 재시도 판단을 맡긴다. */
+    /**
+     * MatchPostUseCase는 IOException만 재시도 대상으로 본다. 그래서 다시 불러서 나아질 수 있는 Gemini 오류는
+     * IOException으로 감싸 넘긴다 — 그러지 않으면 일시 오류인데도 곧바로 UNRESOLVED(PLACE_NOT_FOUND)로 확정된다.
+     * - QuotaExceededException: 무료 티어 호출 제한(429)
+     * - ServerException: 5xx와, 따로 분류되지 않은 서버 거부 전부 — "Firebase App Check token is invalid"도 여기로 온다
+     * - RequestTimeoutException: 요청 시간 초과
+     * API 키 오류·서비스 비활성화·프롬프트 차단처럼 다시 불러도 같은 결과인 예외는 그대로 둔다.
+     * 재시도가 끝내 안 통하면 WorkManager 한도(5회) 후 UNRESOLVED(NETWORK_ERROR)가 된다.
+     */
     private fun Throwable.asRetryableNetworkFailure(): Throwable {
+        if (this is QuotaExceededException || this is ServerException || this is RequestTimeoutException) {
+            return IOException("Gemini 일시 오류: $message", this)
+        }
         var cause: Throwable? = this
         while (cause != null) {
             if (cause is IOException) return cause

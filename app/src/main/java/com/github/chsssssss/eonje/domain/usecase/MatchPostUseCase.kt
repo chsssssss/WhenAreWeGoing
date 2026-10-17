@@ -1,5 +1,7 @@
 package com.github.chsssssss.eonje.domain.usecase
 
+import android.os.SystemClock
+import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.ThumbnailStore
@@ -14,6 +16,8 @@ import com.github.chsssssss.eonje.domain.repository.InstagramMetaLookupRepositor
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.logEvent
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.UUID
@@ -42,25 +46,28 @@ class MatchPostUseCase @Inject constructor(
     private val extractedCandidateRepository: ExtractedCandidateRepository,
     private val thumbnailStore: ThumbnailStore,
     private val notifier: PlaceSavedNotifier,
+    private val analytics: FirebaseAnalytics,
 ) {
     suspend operator fun invoke(postId: String): MatchPostResult {
         val post = savedPostRepository.findById(postId) ?: return MatchPostResult.Done
 
-        val metaResult = metaLookupRepository.fetchMeta(post.instagramUrl)
-        if (metaResult.isFailure) return MatchPostResult.Retry
-        val meta = metaResult.getOrNull() ?: return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
-        val caption = meta.caption
-        if (caption.isNullOrBlank()) return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
-        val mediaUrls = listOfNotNull(meta.imageUrl)
-        // 인스타 CDN의 media_url은 시간이 지나면 만료되므로, 나중에도 계속 보이도록 기기에 받아둔다.
-        val thumbnailUrl = mediaUrls.firstOrNull()?.let { thumbnailStore.cache(postId, it) }
-
-        savedPostRepository.updateExtraction(
-            id = postId,
-            caption = caption,
-            thumbnailUrl = thumbnailUrl,
-            extractedCount = 0,
-        )
+        // 이전 시도에서 캡션을 이미 받아뒀으면(파싱·카카오 검색 단계에서 재시도 중) Apify를 다시 부르지 않는다 —
+        // 호출할 때마다 크레딧이 들고, 받아온 내용도 그대로다. 빈 캡션은 저장 전에 UNRESOLVED로 끝나므로
+        // 여기 남아 있는 캡션은 항상 Apify에서 받은 값이다.
+        val cachedCaption = post.caption
+        val fetched = if (!cachedCaption.isNullOrBlank()) {
+            FetchedPost(cachedCaption, post.thumbnailUrl)
+        } else {
+            when (val result = fetchFromApify(postId, post.instagramUrl)) {
+                FetchOutcome.Failed -> return MatchPostResult.Retry
+                FetchOutcome.NoCaption -> return unresolved(postId, UnresolvedReason.PLACE_NOT_FOUND)
+                is FetchOutcome.Fetched -> result.post
+            }
+        }
+        val caption = fetched.caption
+        val thumbnailUrl = fetched.thumbnailUrl
+        // 2차(이미지) 파싱엔 원격 URL 대신 기기에 받아둔 썸네일을 쓴다 — 재시도 시점엔 CDN URL이 만료됐을 수 있다.
+        val mediaUrls = listOfNotNull(thumbnailUrl)
 
         // 1차 파싱: 캡션만
         val firstPass = captionParsingRepository.extractPlaces(caption)
@@ -112,6 +119,45 @@ class MatchPostUseCase @Inject constructor(
 
         saveCandidatesForReview(postId, searched)
         return MatchPostResult.Done
+    }
+
+    private data class FetchedPost(val caption: String, val thumbnailUrl: String?)
+
+    private sealed interface FetchOutcome {
+        data object Failed : FetchOutcome
+        data object NoCaption : FetchOutcome
+        data class Fetched(val post: FetchedPost) : FetchOutcome
+    }
+
+    /** fetchInstagramMeta(Apify)로 캡션·대표 이미지를 받아 썸네일을 기기에 저장하고 게시물에 기록한다. */
+    private suspend fun fetchFromApify(postId: String, instagramUrl: String): FetchOutcome {
+        val fetchStartedAt = SystemClock.elapsedRealtime()
+        val metaResult = metaLookupRepository.fetchMeta(instagramUrl)
+        analytics.logEvent(Events.APIFY_FETCH) {
+            param(
+                Events.Param.STATUS,
+                when {
+                    metaResult.isFailure -> Events.Status.ERROR
+                    metaResult.getOrNull() == null -> Events.Status.EMPTY
+                    else -> Events.Status.SUCCESS
+                },
+            )
+            param(Events.Param.LATENCY_MS, SystemClock.elapsedRealtime() - fetchStartedAt)
+        }
+        if (metaResult.isFailure) return FetchOutcome.Failed
+        val meta = metaResult.getOrNull() ?: return FetchOutcome.NoCaption
+        val caption = meta.caption
+        if (caption.isNullOrBlank()) return FetchOutcome.NoCaption
+        // 인스타 CDN의 media_url은 시간이 지나면 만료되므로, 나중에도 계속 보이도록 기기에 받아둔다.
+        val thumbnailUrl = meta.imageUrl?.let { thumbnailStore.cache(postId, it) }
+
+        savedPostRepository.updateExtraction(
+            id = postId,
+            caption = caption,
+            thumbnailUrl = thumbnailUrl,
+            extractedCount = 0,
+        )
+        return FetchOutcome.Fetched(FetchedPost(caption, thumbnailUrl))
     }
 
     /** 앱 재실행 시 재매칭을 포기하고 조용히 UNRESOLVED로 넘길 때 쓴다 (재시도 횟수 초과). */
@@ -169,6 +215,7 @@ class MatchPostUseCase @Inject constructor(
         )
         placeRepository.linkPostToPlace(postId, placeId)
         savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
+        analytics.logEvent(Events.POST_RESOLVED) { param(Events.Param.SOURCE, Events.Source.AUTO) }
         notifier.notifyResolved(candidate.name)
     }
 

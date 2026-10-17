@@ -4,8 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostResult
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostUseCase
+import com.google.firebase.analytics.FirebaseAnalytics
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
@@ -15,6 +17,9 @@ class ShareReceiverActivity : ComponentActivity() {
 
     @Inject
     lateinit var saveSharedPostUseCase: SaveSharedPostUseCase
+
+    @Inject
+    lateinit var analytics: FirebaseAnalytics
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +35,9 @@ class ShareReceiverActivity : ComponentActivity() {
 
         // F1은 항상 성공해야 한다 — Room 저장 하나뿐이라 밀리초 단위이므로 finish() 전에 동기적으로 끝낸다.
         val result = runBlocking { saveSharedPostUseCase(sharedText) }
+        if (result == SaveSharedPostResult.Saved) {
+            analytics.logEvent(Events.SHARE_RECEIVED, null)
+        }
         showToast(result)
         finish()
     }

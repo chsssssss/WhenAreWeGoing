@@ -5,6 +5,7 @@ import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
@@ -17,6 +18,8 @@ import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
 import com.github.chsssssss.eonje.widget.PlaceRecommendationWidget
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.logEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
@@ -48,6 +51,7 @@ class ResolveViewModel @Inject constructor(
     private val extractedCandidateRepository: ExtractedCandidateRepository,
     private val folderRepository: FolderRepository,
     @ApplicationContext private val context: Context,
+    private val analytics: FirebaseAnalytics,
 ) : ViewModel() {
 
     private val postId: String = checkNotNull(savedStateHandle[EonjeDestinations.RESOLVE_POST_ID_ARG])
@@ -224,6 +228,7 @@ class ResolveViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true) }
             savePlace(candidate)
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
+            logManualResolved()
             PlaceRecommendationWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
@@ -242,6 +247,11 @@ class ResolveViewModel @Inject constructor(
             toSave.forEach { group -> savePlace(group.selected!!) }
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
             extractedCandidateRepository.replaceForPost(postId, emptyList())
+            logManualResolved()
+            analytics.logEvent(Events.MULTI_PLACE_SAVED) {
+                param(Events.Param.EXTRACTED_COUNT, state.multiGroups.size.toLong())
+                param(Events.Param.SAVED_COUNT, toSave.size.toLong())
+            }
             PlaceRecommendationWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
@@ -249,6 +259,10 @@ class ResolveViewModel @Inject constructor(
             _events.send(ResolveEvent.Toast(message))
             _events.send(ResolveEvent.NavigateBack)
         }
+    }
+
+    private fun logManualResolved() {
+        analytics.logEvent(Events.POST_RESOLVED) { param(Events.Param.SOURCE, Events.Source.MANUAL) }
     }
 
     private suspend fun savePlace(candidate: PlaceCandidate) {

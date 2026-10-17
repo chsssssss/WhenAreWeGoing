@@ -59,6 +59,15 @@ android {
             "FIREBASE_API_KEY",
             "\"${localProperties.getProperty("FIREBASE_API_KEY", "")}\""
         )
+        // Firebase Analytics는 FirebaseOptions/FirebaseApp을 전혀 보지 않고 오직 `google_app_id` 문자열 리소스만
+        // 읽어서 전송 대상 프로젝트를 정한다(play-services-measurement 23.2.0 바이트코드로 확인). google-services
+        // 플러그인이 하던 일을 대신해 wherewegoing(Blaze) 앱 ID를 넣는다 — 기본 FirebaseApp이 Gemini 프로젝트여도
+        // Analytics는 이 값만 따라가므로 Gemini 쪽엔 붙지 않는다. 값이 없으면 SDK가 스스로 비활성화된다.
+        // 이 리소스가 생기면 FirebaseInitProvider가 이를 근거로 기본 앱을 자동 초기화해버리므로 매니페스트에서
+        // FirebaseInitProvider를 제거해뒀다(AndroidManifest.xml 참고).
+        localProperties.getProperty("FIREBASE_APPLICATION_ID", "").takeIf { it.isNotBlank() }?.let {
+            resValue("string", "google_app_id", it)
+        }
         // Firebase AI Logic(Gemini) 전용 프로젝트 — 위 FIREBASE_* 와 분리된 별도 프로젝트.
         buildConfigField(
             "String",
@@ -120,6 +129,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 }
 
@@ -146,6 +156,7 @@ dependencies {
     implementation(libs.firebase.appcheck.playintegrity)
     implementation(libs.firebase.appcheck.debug)
     implementation(libs.firebase.functions)
+    implementation(libs.firebase.analytics)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.mlkit.genai.prompt)
 

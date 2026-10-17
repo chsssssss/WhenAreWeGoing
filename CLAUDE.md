@@ -165,11 +165,13 @@ enum class UnresolvedReason {
 1. **계정명·캡션 조회** — Firebase Cloud Function `fetchInstagramMeta` → Apify `apify/instagram-scraper` 액터로 게시물 URL만으로 캡션 원문(안 잘림) + 대표 이미지 URL을 받는다. 계정을 등록하거나 추적하지 않는다 — 이 게시물 하나를 푸는 데 그걸로 충분하다
 1.5. 대표 이미지는 `ThumbnailStore`로 기기에 다운로드해서 `thumbnailUrl`에 file:// 경로로 저장한다 — 인스타 CDN의 media_url은 시간이 지나면 만료돼서 원본 URL을 그대로 저장해두면 나중에 인박스·상세화면에서 사진이 안 보이게 된다. 다운로드 실패 시엔 원본 URL을 그대로 폴백(최선 노력, F2 실패로 취급하지 않음). 게시물 삭제 시 로컬 파일도 함께 정리된다(`SavedPostRepositoryImpl.deleteByIds`)
 2. 실패(비공개 게시물, Apify 오류, Cloud Run 일시 장애 등) → `MatchPostResult.Retry`로 WorkManager 지수 백오프 재시도. 재시도 한도(5회) 넘기면 `UNRESOLVED(NETWORK_ERROR)`
+   - 캡션을 받아온 뒤 파싱·카카오 검색 단계에서 재시도하는 경우엔 저장해둔 캡션·로컬 썸네일을 그대로 쓰고 Apify를 다시 부르지 않는다(호출마다 크레딧 소모). 2차(이미지) 파싱도 원격 CDN URL 대신 로컬 썸네일을 쓴다
 3. 캡션이 비어있으면 `UNRESOLVED(PLACE_NOT_FOUND)`
 4. 캡션 파싱 시도 순서:
    a. 기기가 ML Kit GenAI(Gemini Nano) 지원 시 온디바이스로 우선 시도 — 비용 0, 네트워크 불필요
    b. 미지원 기기이거나 온디바이스 실패 시 Firebase AI Logic으로 Gemini Flash 호출 (무료 티어, App Check 필요, Gemini 전용 프로젝트 사용)
    c. 두 경로 모두 `@Generable` 구조화 출력으로 `[{상호명, 지역, 메뉴}]` 배열 응답 받기
+   d. Gemini의 일시 오류(`ServerException` — 5xx·App Check 토큰 거부 포함, `QuotaExceededException`, `RequestTimeoutException`)는 `IOException`으로 감싸 재시도 대상으로 넘긴다. API 키 오류·서비스 비활성화 등 영구 오류만 바로 `PLACE_NOT_FOUND`로 종결
 5. 결과 없으면 2차 파싱: 캡션 + 대표 이미지 함께 전달. 이미지 입력은 온디바이스보다 Firebase AI Logic(Gemini) 경로가 안정적 — 비전은 클라우드 우선
 6. 각 항목 카카오 로컬 검색 (클라이언트에서 직접 호출, 앱 서명 기반 키 제한)
 7. 상태 결정:
@@ -226,7 +228,7 @@ enum class UnresolvedReason {
 
 **Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외.
 
-**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다.
+**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다. fir-gemini의 Firebase AI Logic은 App Check **재생 보호(1회용 토큰)**까지 켜져 있어서, `Firebase.ai(...)`에 `useLimitedUseAppCheckTokens = true`를 꼭 넘겨야 한다 — 빠뜨리면 일반 토큰이 "재사용된 토큰"으로 집계되며 `ServerException: Firebase App Check token is invalid`로 전부 거부된다(2026-10-17 확인).
 
 **Apify 토큰과 Cloud Function 배포** — `functions/index.js`가 Apify API 토큰을 쥐고 있어서 앱에는 절대 내장하지 않는다. 배포 전 1회 `firebase functions:secrets:set APIFY_TOKEN`으로 토큰을 등록하고, 이후 `firebase deploy --only functions`로 배포한다(둘 다 `firebase login` 후 CLI에서 직접 실행 — 에이전트가 대신 실행할 수 없다). `firebase.json`/`.firebaserc`가 프로젝트(`wherewegoing-a5493`)를 가리키도록 이미 세팅돼 있다.
 
