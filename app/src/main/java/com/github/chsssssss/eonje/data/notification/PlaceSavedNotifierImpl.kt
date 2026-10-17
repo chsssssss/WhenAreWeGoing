@@ -16,7 +16,7 @@ import javax.inject.Inject
 private const val CHANNEL_ID = "place_resolved"
 
 class PlaceSavedNotifierImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) : PlaceSavedNotifier {
 
     override fun notifyResolved(placeName: String) {

@@ -27,7 +27,7 @@ private val STALE_THRESHOLD_MILLIS = TimeUnit.DAYS.toMillis(30)
 @HiltViewModel
 class InboxViewModel @Inject constructor(
     private val repository: SavedPostRepository,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val showCleanupDialog = MutableStateFlow(false)

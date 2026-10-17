@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,7 @@ import com.github.chsssssss.eonje.ui.components.ProcessingStatusChip
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
 import com.github.chsssssss.eonje.ui.theme.Typography
+import kotlinx.coroutines.launch
 
 @Composable
 fun InboxScreen(
@@ -180,18 +182,16 @@ private fun CleanupConfirmDialog(count: Int, onConfirm: () -> Unit, onDismiss: (
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeableInboxCard(item: InboxItem, onClick: () -> Unit, onSwipeToDelete: () -> Unit) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value != SwipeToDismissBoxValue.Settled) {
-                onSwipeToDelete()
-            }
-            // 실제로 밀어서 없애지 않고 항상 제자리로 되돌린다 — 삭제는 확인 다이얼로그를 거친 뒤에만 일어난다.
-            false
-        },
-    )
+    val dismissState = rememberSwipeToDismissBoxState()
+    val scope = rememberCoroutineScope()
 
     SwipeToDismissBox(
         state = dismissState,
+        onDismiss = {
+            onSwipeToDelete()
+            // 실제로 밀어서 없애지 않고 항상 제자리로 되돌린다 — 삭제는 확인 다이얼로그를 거친 뒤에만 일어난다.
+            scope.launch { dismissState.snapTo(SwipeToDismissBoxValue.Settled) }
+        },
         backgroundContent = {
             Box(
                 modifier = Modifier

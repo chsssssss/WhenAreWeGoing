@@ -16,7 +16,7 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 class LocationRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) : LocationRepository {
 
     private val client by lazy { LocationServices.getFusedLocationProviderClient(context) }
@@ -42,7 +42,5 @@ class LocationRepositoryImpl @Inject constructor(
 
     private fun hasLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 }

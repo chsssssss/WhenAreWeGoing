@@ -1,7 +1,6 @@
 package com.github.chsssssss.eonje.ui.settings
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,9 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Email
@@ -30,6 +29,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.BuildConfig
 import com.github.chsssssss.eonje.domain.model.ThemeMode
@@ -82,14 +82,14 @@ private fun SettingsContent(
                 SettingsLinkRow(
                     label = "개인정보처리방침",
                     onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, PRIVACY_POLICY_URL.toUri()))
                     },
                 )
                 SettingsLinkRow(
                     label = "문의하기",
                     icon = Icons.Filled.Email,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")).apply {
+                        val intent = Intent(Intent.ACTION_SENDTO, "mailto:".toUri()).apply {
                             putExtra(Intent.EXTRA_EMAIL, arrayOf(CONTACT_EMAIL))
                             putExtra(Intent.EXTRA_SUBJECT, "[언제가지] 문의")
                         }

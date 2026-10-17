@@ -5,14 +5,13 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.remote.WHEREWEGOING_FIREBASE_APP_NAME
+import com.github.chsssssss.eonje.data.remote.appCheckProviderFactory
 import com.github.chsssssss.eonje.data.worker.InboxReminderWorker
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.appCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.kakao.vectormap.KakaoMapSdk
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -88,12 +87,8 @@ class EonjeApplication : Application(), Configuration.Provider {
         installAppCheck(FirebaseAppCheck.getInstance(app))
     }
 
+    /** 디버그는 Debug Provider, 릴리스는 Play Integrity — 빌드 타입별 소스셋(src/debug, src/release)에서 고른다. */
     private fun installAppCheck(appCheck: FirebaseAppCheck) {
-        val factory = if (BuildConfig.DEBUG) {
-            DebugAppCheckProviderFactory.getInstance()
-        } else {
-            PlayIntegrityAppCheckProviderFactory.getInstance()
-        }
-        appCheck.installAppCheckProviderFactory(factory)
+        appCheck.installAppCheckProviderFactory(appCheckProviderFactory())
     }
 }

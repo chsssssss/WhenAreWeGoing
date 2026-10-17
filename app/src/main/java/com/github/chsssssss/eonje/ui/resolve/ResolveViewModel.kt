@@ -50,7 +50,7 @@ class ResolveViewModel @Inject constructor(
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val extractedCandidateRepository: ExtractedCandidateRepository,
     private val folderRepository: FolderRepository,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val analytics: FirebaseAnalytics,
 ) : ViewModel() {
 

@@ -133,6 +133,11 @@ android {
     }
 }
 
+// Room 스키마를 JSON으로 내보내 git에 남긴다 — 다음 스키마 변경 때 마이그레이션 작성·검증의 기준이 된다.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -154,7 +159,8 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.ai)
     implementation(libs.firebase.appcheck.playintegrity)
-    implementation(libs.firebase.appcheck.debug)
+    // 디버그 프로바이더는 릴리스에 포함하지 않는다 — src/debug, src/release의 appCheckProviderFactory() 참고.
+    debugImplementation(libs.firebase.appcheck.debug)
     implementation(libs.firebase.functions)
     implementation(libs.firebase.analytics)
     implementation(libs.kotlinx.coroutines.play.services)

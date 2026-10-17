@@ -13,7 +13,7 @@ import androidx.room.TypeConverters
         FolderEntity::class,
     ],
     version = 9,
-    exportSchema = false,
+    exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class EonjeDatabase : RoomDatabase() {

@@ -17,7 +17,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.core.graphics.createBitmap
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -190,7 +191,7 @@ private fun Context.vectorDrawableToBitmap(resId: Int): Bitmap {
     val drawable = requireNotNull(ContextCompat.getDrawable(this, resId))
     val width = drawable.intrinsicWidth.coerceAtLeast(1)
     val height = drawable.intrinsicHeight.coerceAtLeast(1)
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(width, height)
     drawable.setBounds(0, 0, width, height)
     drawable.draw(Canvas(bitmap))
     return bitmap
@@ -203,7 +204,7 @@ private fun Context.circleMarkerBitmap(colorInt: Int, icon: String): Bitmap {
     val diameterPx = MARKER_DIAMETER_DP * density
     val strokePx = 2f * density
     val size = diameterPx.toInt().coerceAtLeast(1)
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(size, size)
     val canvas = Canvas(bitmap)
     val center = size / 2f
     val radius = center - strokePx / 2f
@@ -236,7 +237,7 @@ private fun Context.pinMarkerBitmap(colorInt: Int, icon: String): Bitmap {
     val density = resources.displayMetrics.density
     val size = (HIGHLIGHT_MARKER_DIAMETER_DP * density).toInt().coerceAtLeast(1)
     val scale = size / 24f
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(size, size)
     val canvas = Canvas(bitmap)
 
     // ic_map_pin.xml의 pathData(M12,4 C7.58,4 4,7.58 4,12 C4,16.42 12,22 12,22 C12,22 20,16.42 20,12

@@ -82,4 +82,61 @@ class InstagramUrlParserTest {
         assertEquals("DajwvcrDEHI", shortcode1)
         assertEquals(shortcode1, shortcode2)
     }
+
+    // ── findPostUrl: 공유 텍스트 → 표준 게시물 URL ──
+
+    @Test
+    fun `findPostUrl canonicalizes p reel tv and strips igsh query`() {
+        assertEquals(
+            InstagramPostUrl("ABC123", "https://www.instagram.com/p/ABC123/"),
+            InstagramUrlParser.findPostUrl("https://www.instagram.com/p/ABC123/?igsh=xyz"),
+        )
+        assertEquals(
+            "https://www.instagram.com/reel/DEF456/",
+            InstagramUrlParser.findPostUrl("https://www.instagram.com/reel/DEF456/?igsh=abc")?.canonicalUrl,
+        )
+        assertEquals(
+            "https://www.instagram.com/tv/GHI789/",
+            InstagramUrlParser.findPostUrl("https://www.instagram.com/tv/GHI789")?.canonicalUrl,
+        )
+    }
+
+    @Test
+    fun `findPostUrl normalizes http, mobile and short hosts that the cloud function would reject`() {
+        val expected = "https://www.instagram.com/p/ABC123/"
+        assertEquals(expected, InstagramUrlParser.findPostUrl("http://instagram.com/p/ABC123/")?.canonicalUrl)
+        assertEquals(expected, InstagramUrlParser.findPostUrl("https://m.instagram.com/p/ABC123/")?.canonicalUrl)
+        assertEquals(expected, InstagramUrlParser.findPostUrl("https://instagr.am/p/ABC123/")?.canonicalUrl)
+    }
+
+    @Test
+    fun `findPostUrl keeps shortcode case and drops fragment`() {
+        assertEquals(
+            InstagramPostUrl("DdEDSLbj_xa", "https://www.instagram.com/p/DdEDSLbj_xa/"),
+            InstagramUrlParser.findPostUrl("https://www.instagram.com/p/DdEDSLbj_xa/#comments"),
+        )
+    }
+
+    @Test
+    fun `findPostUrl picks the instagram post link among several urls`() {
+        val text = "블로그 https://blog.naver.com/abc 원본은 https://www.instagram.com/reel/Da2G_vrkpLP/?stkn=x 여기"
+        assertEquals("Da2G_vrkpLP", InstagramUrlParser.findPostUrl(text)?.shortcode)
+    }
+
+    @Test
+    fun `findPostUrl rejects non-instagram, profile, lookalike host and empty text`() {
+        assertNull(InstagramUrlParser.findPostUrl("https://blog.naver.com/p/ABC123/"))
+        assertNull(InstagramUrlParser.findPostUrl("https://www.instagram.com/someuser/"))
+        assertNull(InstagramUrlParser.findPostUrl("https://notinstagram.com/p/ABC123/"))
+        assertNull(InstagramUrlParser.findPostUrl("https://evil.com/?next=https://www.instagram.com/p/ABC123/"))
+        assertNull(InstagramUrlParser.findPostUrl(""))
+        assertNull(InstagramUrlParser.findPostUrl("그냥 텍스트"))
+    }
+
+    @Test
+    fun `same post shared as p and with different tracking tokens dedups to one shortcode`() {
+        val a = InstagramUrlParser.findPostUrl("https://www.instagram.com/p/Dcr3D-lk6x3/?stkn=AAA")
+        val b = InstagramUrlParser.findPostUrl("https://instagram.com/p/Dcr3D-lk6x3/?igsh=BBB")
+        assertEquals(a, b)
+    }
 }

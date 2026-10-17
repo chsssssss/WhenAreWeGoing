@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 위젯(RemoteViews)은 앱 테마 배경이 깔리지 않아 배경색을 직접 칠해야 한다 — Overdraw 경고는 오탐. -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="Overdraw"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#1B1D21"

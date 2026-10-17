@@ -8,9 +8,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.AnchoredDraggableState
@@ -72,14 +72,15 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.data.local.FolderEntity
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
@@ -249,7 +250,7 @@ private fun LocationPermissionRequester(onGranted: () -> Unit) {
             onGrantedState.value()
         } else {
             permissionLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
+                arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
             )
         }
     }
@@ -275,7 +276,7 @@ private fun HomeContent(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    val windowHeightPx = LocalWindowInfo.current.containerSize.height
     var containerHeightPx by remember { mutableStateOf(0f) }
 
     val sheetState = remember {
@@ -326,7 +327,7 @@ private fun HomeContent(
         )
 
         val sheetHeightDp = with(density) { (containerHeightPx * SHEET_FULL_FRACTION).toDp() }
-            .let { if (containerHeightPx > 0f) it else (screenHeightDp * SHEET_FULL_FRACTION).dp }
+            .let { if (containerHeightPx > 0f) it else with(density) { (windowHeightPx * SHEET_FULL_FRACTION).toDp() } }
 
         Box(
             modifier = Modifier
@@ -839,7 +840,7 @@ private fun PlaceDetailSheetContent(
                     // 카카오맵 공식 공유 링크 — 앱이 깔려 있으면 앱에서, 없으면 모바일 웹에서 길찾기가 열린다.
                     val url = "https://map.kakao.com/link/to/${Uri.encode(place.name)},$lat,$lng"
                     runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
                     }.onFailure {
                         Toast.makeText(context, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show()
                     }
@@ -871,7 +872,7 @@ private fun PlacePostRow(post: HomePlacePost) {
             .padding(12.dp)
             .clickable {
                 runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(post.label)))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, post.label.toUri()))
                 }.onFailure {
                     Toast.makeText(context, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show()
                 }

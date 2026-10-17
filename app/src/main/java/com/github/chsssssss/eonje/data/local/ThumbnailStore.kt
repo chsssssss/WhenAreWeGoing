@@ -19,7 +19,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class ThumbnailStore @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
 ) {
     private val dir: File by lazy {

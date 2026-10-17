@@ -9,6 +9,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.functions
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -16,7 +17,7 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 class InstagramMetaLookupRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) : InstagramMetaLookupRepository {
 
     private val functions: FirebaseFunctions? by lazy { buildFunctions() }
@@ -40,6 +41,9 @@ class InstagramMetaLookupRepositoryImpl @Inject constructor(
             )
         } catch (e: CancellationException) {
             throw e
+        } catch (e: FirebaseFunctionsException) {
+            // 함수가 URL 자체를 거부한 경우(invalid-argument)는 다시 불러도 같으므로 재시도하지 않고 "게시물 없음"으로 처리한다.
+            if (e.code == FirebaseFunctionsException.Code.INVALID_ARGUMENT) Result.success(null) else Result.failure(e)
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -3,8 +3,8 @@ package com.github.chsssssss.eonje.data.repository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import com.github.chsssssss.eonje.BuildConfig
 import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
@@ -56,7 +56,7 @@ private data class ExtractedPlaceDto(
  * 이미지가 포함된 2차 파싱은 온디바이스 비전이 아직 불안정해 곧바로 클라우드로 보낸다.
  */
 class CaptionParsingRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
     private val json: Json,
     private val analytics: FirebaseAnalytics,
@@ -151,7 +151,7 @@ class CaptionParsingRepositoryImpl @Inject constructor(
     /** [url]은 원격 URL이거나 ThumbnailStore가 받아둔 file:// 경로다. */
     private suspend fun downloadBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
-            val uri = Uri.parse(url)
+            val uri = url.toUri()
             if (uri.scheme == "file") return@runCatching BitmapFactory.decodeFile(uri.path)
             okHttpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 response.body?.byteStream()?.use { BitmapFactory.decodeStream(it) }

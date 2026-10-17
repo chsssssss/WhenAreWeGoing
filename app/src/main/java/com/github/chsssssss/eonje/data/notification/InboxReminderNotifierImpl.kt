@@ -20,7 +20,7 @@ private const val CHANNEL_ID = "inbox_reminder"
 private const val NOTIFICATION_ID = 1001
 
 class InboxReminderNotifierImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) : InboxReminderNotifier {
 
     override fun notifyPending(count: Int) {

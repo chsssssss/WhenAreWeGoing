@@ -46,7 +46,7 @@ class ShareReceiverActivity : ComponentActivity() {
         val message = when (result) {
             SaveSharedPostResult.Saved -> "저장됨"
             SaveSharedPostResult.AlreadySaved -> "이미 저장된 게시물이에요"
-            SaveSharedPostResult.NoUrlFound -> "인스타그램 링크를 찾을 수 없어요"
+            SaveSharedPostResult.NoUrlFound -> "인스타그램 게시물 링크를 찾을 수 없어요"
         }
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }

@@ -155,8 +155,9 @@ enum class UnresolvedReason {
 
 - ACTION_SEND + text/plain 인텐트 필터
 - 투명 테마 액티비티. UI 없이 토스트만 띄우고 즉시 finish()
-- URL에서 shortcode 추출: `/p/{code}/`, `/reel/{code}/`, `/tv/{code}/`
-- 쿼리 파라미터(`?igsh=...`) 제거
+- URL에서 shortcode 추출: `/p/{code}/`, `/reel/{code}/`, `/tv/{code}/` — 인스타 게시물 링크만 받는다. 다른 URL(프로필·외부 사이트)은 자동 매칭을 시작할 수 없어 저장하지 않고 "인스타그램 게시물 링크를 찾을 수 없어요" 토스트만 띄운다
+- `http://`, `m.instagram.com`, `instagr.am` 형태도 받아서 `https://www.instagram.com/{p|reel|tv}/{code}/`로 표준화해 저장한다(쿼리 `?igsh=...`·프래그먼트 제거). `fetchInstagramMeta`가 이 형태만 받기 때문 — `InstagramUrlParser.findPostUrl`
+- 중복 확인과 저장은 프로세스 안에서 `Mutex`로 직렬화한다(연달아 공유 시 중복 생성 방지)
 - Room에 SavedPost 생성 (동기 처리, 밀리초 단위)
 - 이후 WorkManager로 위임
 
@@ -228,7 +229,7 @@ enum class UnresolvedReason {
 
 **Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외.
 
-**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다. fir-gemini의 Firebase AI Logic은 App Check **재생 보호(1회용 토큰)**까지 켜져 있어서, `Firebase.ai(...)`에 `useLimitedUseAppCheckTokens = true`를 꼭 넘겨야 한다 — 빠뜨리면 일반 토큰이 "재사용된 토큰"으로 집계되며 `ServerException: Firebase App Check token is invalid`로 전부 거부된다(2026-10-17 확인).
+**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다 — 빌드 타입별 소스셋(`src/debug`, `src/release`의 `appCheckProviderFactory()`)에서 고르고 `firebase-appcheck-debug`는 `debugImplementation`이라 릴리스엔 디버그 프로바이더 코드가 아예 들어가지 않는다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다. fir-gemini의 Firebase AI Logic은 App Check **재생 보호(1회용 토큰)**까지 켜져 있어서, `Firebase.ai(...)`에 `useLimitedUseAppCheckTokens = true`를 꼭 넘겨야 한다 — 빠뜨리면 일반 토큰이 "재사용된 토큰"으로 집계되며 `ServerException: Firebase App Check token is invalid`로 전부 거부된다(2026-10-17 확인).
 
 **Apify 토큰과 Cloud Function 배포** — `functions/index.js`가 Apify API 토큰을 쥐고 있어서 앱에는 절대 내장하지 않는다. 배포 전 1회 `firebase functions:secrets:set APIFY_TOKEN`으로 토큰을 등록하고, 이후 `firebase deploy --only functions`로 배포한다(둘 다 `firebase login` 후 CLI에서 직접 실행 — 에이전트가 대신 실행할 수 없다). `firebase.json`/`.firebaserc`가 프로젝트(`wherewegoing-a5493`)를 가리키도록 이미 세팅돼 있다.
 
@@ -337,3 +338,6 @@ enum class UnresolvedReason {
 - 이벤트성 처리(토스트, 네비게이션)는 Channel 또는 SharedFlow로 분리
 - Repository는 domain 레이어에 인터페이스, data 레이어에 구현체
 - 모든 네트워크/DB 작업은 코루틴. UI 레이어에서 직접 호출 금지
+- **Room 스키마 변경 시 반드시 마이그레이션 추가** — 1.0 출시 기준 스키마는 v9(`app/schemas/.../9.json`, git 관리). 파괴적 마이그레이션(`fallbackToDestructiveMigration`)은 제거했으므로, `version`을 올리고 `Migration`/`AutoMigration`을 빠뜨리면 앱 시작 시 크래시로 드러난다(데이터를 조용히 지우지 않게 하려는 의도)
+- **릴리스 로그에 URL·캡션·가게 이름을 남기지 않는다** — OkHttp `HttpLoggingInterceptor`는 `BuildConfig.DEBUG`일 때만 붙인다(BASIC도 요청 URL 전체, 즉 카카오 검색어를 남김)
+- **광고 ID 권한은 매니페스트에서 제거해둔 상태** — Firebase Analytics가 `AD_ID`/`ACCESS_ADSERVICES_*` 권한을 자동 추가하므로 `tools:node="remove"`로 빼고 `google_analytics_adid_collection_enabled=false`로 수집도 끈다. Play Console 광고 ID 신고는 "사용 안 함"과 일치해야 한다

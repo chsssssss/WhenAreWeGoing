@@ -5,9 +5,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 홈 지도를 현재 위치 중심으로 띄우는 용도. 거부해도 저장한 장소는 그대로 보인다. -->
+    <!-- 홈 지도를 현재 위치 중심으로 띄우는 용도. 거부해도 저장한 장소는 그대로 보인다.
+         측위는 PRIORITY_BALANCED_POWER_ACCURACY(동네 수준)라 대략적 위치만 요청한다. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Firebase Analytics(play-services-measurement)가 광고 ID 권한을 자동으로 추가한다. 이 앱은 광고를 쓰지 않으므로
+         빼둔다 — 남아 있으면 Play Console 광고 ID 신고("사용 안 함")와 어긋나 출시가 막힌다. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
 
     <application
         android:name=".EonjeApplication"
@@ -19,10 +24,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Eonje">
+        <!-- 권한을 빼도 SDK가 광고 ID 수집을 시도하지 않도록 명시적으로 끈다. -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.Eonje">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

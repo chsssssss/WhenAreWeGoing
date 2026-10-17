@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje.data.worker
 
 import android.content.Context
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -15,6 +16,7 @@ import com.github.chsssssss.eonje.domain.usecase.MatchPostResult
 import com.github.chsssssss.eonje.domain.usecase.MatchPostUseCase
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 
 private const val KEY_POST_ID = "postId"
 private const val MAX_RETRY_ATTEMPTS = 5
@@ -28,12 +30,22 @@ class CaptionParsingWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val postId = inputData.getString(KEY_POST_ID) ?: return Result.failure()
-        return when (matchPostUseCase(postId)) {
+        val result = try {
+            matchPostUseCase(postId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 예상 못 한 예외(DB 오류 등)로 작업이 FAILURE로 끝나면 게시물이 PENDING에 영원히 남는다.
+            // 일시적일 수 있으니 재시도로 돌리고, 한도를 넘기면 아래와 같이 UNRESOLVED로 정리한다.
+            Log.w(TAG, "캡션 매칭 중 예외", e)
+            MatchPostResult.Retry
+        }
+        return when (result) {
             MatchPostResult.Done -> Result.success()
             MatchPostResult.Retry -> {
                 if (runAttemptCount >= MAX_RETRY_ATTEMPTS) {
                     // 네트워크 없음 → 지수 백오프 재시도. 재시도 한도를 넘기면 조용히 UNRESOLVED로 넘긴다.
-                    matchPostUseCase.markUnresolved(postId)
+                    runCatching { matchPostUseCase.markUnresolved(postId) }
                     Result.success()
                 } else {
                     Result.retry()

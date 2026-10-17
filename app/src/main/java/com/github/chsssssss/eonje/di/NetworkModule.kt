@@ -1,5 +1,6 @@
 package com.github.chsssssss.eonje.di
 
+import com.github.chsssssss.eonje.BuildConfig
 import com.github.chsssssss.eonje.data.remote.kakao.KakaoLocalApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
@@ -31,9 +32,12 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(
-            HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
-        )
+        .apply {
+            // BASIC도 요청 URL 전체를 남긴다 — 카카오 검색어(가게 이름·지역)와 인스타 CDN URL이 들어가므로 릴리스에선 끈다.
+            if (BuildConfig.DEBUG) {
+                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            }
+        }
         .build()
 
     @Provides

@@ -1,7 +1,6 @@
 package com.github.chsssssss.eonje.ui.resolve
 
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
@@ -70,7 +70,7 @@ fun ResolveScreen(
                 ResolveEvent.NavigateBack -> onNavigateBack()
                 is ResolveEvent.OpenUrl -> {
                     runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(event.url)))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, event.url.toUri()))
                     }.onFailure {
                         Toast.makeText(context, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show()
                     }
