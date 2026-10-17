@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const logger = require("firebase-functions/logger");
 
 // Apify API 토큰 — 앱에는 절대 내장하지 않고 여기(서버)에만 보관한다.
 // 배포 전 1회: firebase functions:secrets:set APIFY_TOKEN
@@ -28,6 +29,8 @@ exports.fetchInstagramMeta = onCall(
 
     const apifyUrl = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${APIFY_TOKEN.value()}`;
 
+    // 로그 기반 알림용 구조화 로그 — jsonPayload.event로 필터한다. URL·캡션 등 게시물 내용은 남기지 않는다.
+    const startedAt = Date.now();
     let items;
     try {
       const response = await fetch(apifyUrl, {
@@ -40,15 +43,31 @@ exports.fetchInstagramMeta = onCall(
         }),
       });
       if (!response.ok) {
-        throw new Error(`Apify responded ${response.status}`);
+        const error = new Error(`Apify responded ${response.status}`);
+        error.httpStatus = response.status;
+        throw error;
       }
       items = await response.json();
     } catch (error) {
+      logger.error("Apify 호출 실패", {
+        event: "apify_fetch_failed",
+        httpStatus: error?.httpStatus ?? null,
+        errorMessage: error?.message ?? String(error),
+        errorCode: error?.cause?.code ?? null,
+        latencyMs: Date.now() - startedAt,
+      });
       throw new HttpsError("unavailable", "게시물 정보를 가져오지 못했어요", error?.message);
     }
 
     const post = Array.isArray(items) ? items[0] : null;
     if (!post || typeof post.ownerUsername !== "string" || post.ownerUsername.length === 0) {
+      logger.warn("Apify 빈 결과", {
+        event: "apify_fetch_empty",
+        itemCount: Array.isArray(items) ? items.length : null,
+        // Apify는 비공개·삭제된 게시물에 { error, errorDescription } 형태의 항목을 돌려준다.
+        apifyError: typeof post?.error === "string" ? post.error : null,
+        latencyMs: Date.now() - startedAt,
+      });
       return { username: null, caption: null, imageUrl: null };
     }
 
