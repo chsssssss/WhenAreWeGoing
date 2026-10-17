@@ -9,6 +9,8 @@ const APIFY_TOKEN = defineSecret("APIFY_TOKEN");
 // apify/instagram-scraper — 게시물 하나당 1건 과금(무료 티어 월 ~1,850건).
 const ACTOR_ID = "apify~instagram-scraper";
 const INSTAGRAM_URL_PATTERN = /^https:\/\/(www\.)?instagram\.com\//;
+// 함수 timeoutSeconds(60)보다 짧게 — 응답 처리·로그 남길 여유를 둔다.
+const APIFY_RUN_TIMEOUT_SECONDS = 50;
 
 /**
  * F2 캡션 파싱용: 공유받은 인스타그램 게시물 URL만으로 작성자 계정명과 캡션 원문을 얻는다.
@@ -27,7 +29,8 @@ exports.fetchInstagramMeta = onCall(
       throw new HttpsError("invalid-argument", "유효한 인스타그램 URL이 아니에요");
     }
 
-    const apifyUrl = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${APIFY_TOKEN.value()}`;
+    // timeout(초): 함수가 60초에 끊겨도 Apify 실행은 계속 돌며 과금되므로, 그보다 먼저 Apify 쪽 실행을 끝낸다.
+    const apifyUrl = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${APIFY_TOKEN.value()}&timeout=${APIFY_RUN_TIMEOUT_SECONDS}`;
 
     // 로그 기반 알림용 구조화 로그 — jsonPayload.event로 필터한다. URL·캡션 등 게시물 내용은 남기지 않는다.
     const startedAt = Date.now();
