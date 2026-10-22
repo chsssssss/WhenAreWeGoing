@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.spring
@@ -42,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
@@ -55,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -80,10 +84,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.LocationAvailability
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.ui.components.AddFolderContent
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
@@ -120,7 +129,9 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    LocationPermissionRequester(onGranted = viewModel::refreshCurrentLocation)
+    LocationPermissionRequester(onResult = viewModel::refreshCurrentLocation)
+    OnResumeEffect(onResume = viewModel::refreshCurrentLocation)
+    val locationNotice by viewModel.locationNotice.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.toastMessages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
@@ -137,6 +148,9 @@ fun HomeScreen(
         onOpenAddPlaceSheet = viewModel::onOpenAddPlaceSheet,
         onDeleteFolder = viewModel::onDeleteFolder,
         onOpenGuide = onOpenGuide,
+        locationNotice = locationNotice,
+        onDismissLocationNotice = viewModel::onDismissLocationNotice,
+        onLocationPermissionResult = viewModel::refreshCurrentLocation,
         modifier = modifier,
     )
 
@@ -237,26 +251,101 @@ fun HomeScreen(
 
 /**
  * 지도를 현재 위치 중심으로 띄우기 위한 권한 요청. 거부해도 저장한 장소는 그대로 보이고,
- * 지도만 저장된 장소 기준으로 그려진다.
+ * 지도만 저장된 장소 기준으로 그려진다. 거부·기기 위치 꺼짐은 지도 위 배너([LocationNoticeBanner])가
+ * 설정 화면으로 안내하고, 돌아오면 [HomeScreen]의 ON_RESUME에서 다시 확인한다.
  */
 @Composable
-private fun LocationPermissionRequester(onGranted: () -> Unit) {
+private fun LocationPermissionRequester(onResult: () -> Unit) {
     val context = LocalContext.current
-    val onGrantedState = rememberUpdatedState(onGranted)
+    val onResultState = rememberUpdatedState(onResult)
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
-        onResult = { result -> if (result.values.any { it }) onGrantedState.value() },
+        onResult = { onResultState.value() },
     )
 
     LaunchedEffect(Unit) {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            onGrantedState.value()
-        } else {
-            permissionLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
-            )
+        if (!granted) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+    }
+}
+
+/** 화면이 다시 보일 때마다 호출 — 설정 화면에서 위치를 켜거나 권한을 주고 돌아온 경우를 잡는다. */
+@Composable
+private fun OnResumeEffect(onResume: () -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val onResumeState = rememberUpdatedState(onResume)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) onResumeState.value()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+}
+
+/**
+ * 현재 위치를 못 쓰는 이유와 해결 버튼. 닫으면 이번 실행 동안은 다시 안 뜬다.
+ * - 기기 위치 꺼짐: 기기 위치 설정 화면으로 보낸다.
+ * - 권한 거부: 안드로이드가 아직 다시 묻는 걸 허용하면(shouldShowRequestPermissionRationale) 시스템 권한
+ *   팝업을 다시 띄운다 — 앱을 나가지 않고 한 번에 끝난다. 두 번 거부·"다시 묻지 않음" 이후엔 팝업이 안 뜨므로
+ *   앱 정보 화면으로 보낸다(위치 권한 페이지로 바로 가는 공개 인텐트는 없음).
+ */
+@Composable
+private fun LocationNoticeBanner(
+    availability: LocationAvailability,
+    onPermissionResult: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val activity = LocalActivity.current
+    val onPermissionResultState = rememberUpdatedState(onPermissionResult)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = { onPermissionResultState.value() },
+    )
+    val message = when (availability) {
+        LocationAvailability.LOCATION_OFF -> "위치가 꺼져 있어 내 위치를 못 찾아요"
+        else -> "위치 권한이 없어 내 위치를 못 찾아요"
+    }
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .clip(shape)
+            .background(EonjeColors.surface)
+            .border(1.dp, EonjeColors.border, shape)
+            .padding(start = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.LocationOff, contentDescription = null, tint = EonjeColors.iconMuted, modifier = Modifier.size(18.dp))
+        Text(
+            message,
+            style = Typography.bodySmall,
+            color = EonjeColors.textSecondary,
+            modifier = Modifier.weight(1f).padding(start = 10.dp),
+        )
+        TextButton(onClick = {
+            val canAskAgain = activity != null &&
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_COARSE_LOCATION)
+            when {
+                availability == LocationAvailability.LOCATION_OFF ->
+                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                canAskAgain ->
+                    permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+                else -> context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())
+                )
+            }
+        }) {
+            Text("설정", style = Typography.labelLarge, color = EonjeColors.accent)
+        }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Filled.Close, contentDescription = "닫기", tint = EonjeColors.iconMuted, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -280,6 +369,9 @@ private fun HomeContent(
     onDeleteFolder: (String) -> Unit,
     onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
+    locationNotice: LocationAvailability? = null,
+    onDismissLocationNotice: () -> Unit = {},
+    onLocationPermissionResult: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val windowHeightPx = LocalWindowInfo.current.containerSize.height
@@ -377,6 +469,16 @@ private fun HomeContent(
                     )
                 }
             }
+        }
+
+        // 빈 상태에선 시트가 Full이라 지도 위쪽이 거의 가려지므로 시트보다 위에 그린다.
+        if (locationNotice != null) {
+            LocationNoticeBanner(
+                availability = locationNotice,
+                onPermissionResult = onLocationPermissionResult,
+                onDismiss = onDismissLocationNotice,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }

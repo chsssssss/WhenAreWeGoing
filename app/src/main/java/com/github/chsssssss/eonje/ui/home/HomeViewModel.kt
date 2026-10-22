@@ -7,6 +7,7 @@ import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
+import com.github.chsssssss.eonje.domain.model.LocationAvailability
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
@@ -49,6 +50,15 @@ class HomeViewModel @Inject constructor(
     private val showCreateFolderSheet = MutableStateFlow(false)
     private val folderAssignForPlaceId = MutableStateFlow<String?>(null)
     private val folderAssignSelectedFolderId = MutableStateFlow<String?>(null)
+
+    private val locationAvailability = MutableStateFlow(LocationAvailability.AVAILABLE)
+    private val locationNoticeDismissed = MutableStateFlow(false)
+
+    /** 지도 위 위치 안내 배너 — 위치를 쓸 수 없고 사용자가 닫지 않았을 때만 값이 있다. 지도 상태와 무관해 따로 둔다. */
+    val locationNotice: StateFlow<LocationAvailability?> =
+        combine(locationAvailability, locationNoticeDismissed) { availability, dismissed ->
+            availability.takeUnless { it == LocationAvailability.AVAILABLE || dismissed }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val showAddPlaceSheet = MutableStateFlow(false)
     private val addPlaceQuery = MutableStateFlow("")
@@ -186,11 +196,25 @@ class HomeViewModel @Inject constructor(
         folderFilter.value = filter
     }
 
-    /** 위치 권한이 확인된 뒤 호출한다. 못 잡으면 null로 남고 지도는 저장된 장소 기준으로 그려진다. */
+    /**
+     * 화면이 다시 보일 때마다(설정에서 돌아온 경우 포함)와 권한 요청 직후에 호출한다.
+     * 위치를 못 쓰면 배너로 안내하고, 지도는 저장된 장소 기준으로 그려진다.
+     */
     fun refreshCurrentLocation() {
+        val availability = locationRepository.checkAvailability()
+        locationAvailability.value = availability
+        if (availability != LocationAvailability.AVAILABLE) {
+            currentLocation.value = null
+            return
+        }
         viewModelScope.launch {
             currentLocation.value = locationRepository.getCurrentLocation()
         }
+    }
+
+    /** 배너를 닫으면 이번 실행 동안은 다시 띄우지 않는다. */
+    fun onDismissLocationNotice() {
+        locationNoticeDismissed.value = true
     }
 
     fun onOpenFolderPicker(placeId: String) {
