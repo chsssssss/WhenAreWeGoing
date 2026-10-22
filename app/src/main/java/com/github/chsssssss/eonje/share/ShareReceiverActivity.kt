@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.github.chsssssss.eonje.data.analytics.Events
+import com.github.chsssssss.eonje.domain.repository.OnboardingRepository
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostResult
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostUseCase
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -20,6 +21,9 @@ class ShareReceiverActivity : ComponentActivity() {
 
     @Inject
     lateinit var analytics: FirebaseAnalytics
+
+    @Inject
+    lateinit var onboardingRepository: OnboardingRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,9 +41,20 @@ class ShareReceiverActivity : ComponentActivity() {
         val result = runBlocking { saveSharedPostUseCase(sharedText) }
         if (result == SaveSharedPostResult.Saved) {
             analytics.logEvent(Events.SHARE_RECEIVED, null)
+            logFirstShareAfterOnboarding()
         }
         showToast(result)
         finish()
+    }
+
+    // 측정용일 뿐이라 DataStore를 못 읽어도 저장 흐름에는 영향을 주지 않는다.
+    private fun logFirstShareAfterOnboarding() {
+        val isFirstShare = runCatching {
+            runBlocking { onboardingRepository.consumeFirstShareAfterOnboarding() }
+        }.getOrDefault(false)
+        if (isFirstShare) {
+            analytics.logEvent(Events.FIRST_SHARE_AFTER_ONBOARDING, null)
+        }
     }
 
     private fun showToast(result: SaveSharedPostResult) {

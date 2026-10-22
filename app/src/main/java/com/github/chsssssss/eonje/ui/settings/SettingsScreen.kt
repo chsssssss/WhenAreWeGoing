@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -43,6 +44,7 @@ private const val CONTACT_EMAIL = "chaheesun42@gmail.com"
 
 @Composable
 fun SettingsScreen(
+    onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -51,6 +53,7 @@ fun SettingsScreen(
     SettingsContent(
         themeMode = uiState.themeMode,
         onThemeModeSelected = viewModel::onThemeModeSelected,
+        onOpenGuide = onOpenGuide,
         modifier = modifier,
     )
 }
@@ -59,6 +62,7 @@ fun SettingsScreen(
 private fun SettingsContent(
     themeMode: ThemeMode,
     onThemeModeSelected: (ThemeMode) -> Unit,
+    onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -79,6 +83,11 @@ private fun SettingsContent(
 
         SettingsSection(title = "정보") {
             SettingsCard {
+                SettingsLinkRow(
+                    label = "사용법",
+                    icon = Icons.Filled.ChevronRight,
+                    onClick = onOpenGuide,
+                )
                 SettingsLinkRow(
                     label = "개인정보처리방침",
                     onClick = {
@@ -218,6 +227,7 @@ private fun SettingsScreenPreview() {
         SettingsContent(
             themeMode = ThemeMode.SYSTEM,
             onThemeModeSelected = {},
+            onOpenGuide = {},
         )
     }
 }

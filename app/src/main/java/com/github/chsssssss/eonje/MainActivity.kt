@@ -9,13 +9,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -57,7 +61,19 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun EonjeApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
-    NotificationPermissionRequester()
+    val onboardingCompleted by shellViewModel.onboardingCompleted.collectAsState()
+    val completed = onboardingCompleted
+    if (completed == null) {
+        Box(modifier = Modifier.fillMaxSize().background(EonjeColors.background))
+        return
+    }
+    // 처음 읽은 값으로 한 번만 정한다 — 온보딩을 끝내서 값이 바뀌어도 NavHost 그래프를 다시 만들지 않는다.
+    val startDestination = remember {
+        if (completed) EonjeDestinations.HOME else EonjeDestinations.ONBOARDING
+    }
+
+    // 권한 요청 팝업이 온보딩 위에 뜨지 않도록 온보딩을 끝낸 뒤에 요청한다.
+    if (completed) NotificationPermissionRequester()
 
     val navController = rememberNavController()
     val badgeCount by shellViewModel.inboxBadgeCount.collectAsState()
@@ -83,6 +99,7 @@ private fun EonjeApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
     ) { innerPadding ->
         EonjeNavHost(
             navController = navController,
+            startDestination = startDestination,
             modifier = Modifier.padding(innerPadding),
         )
     }

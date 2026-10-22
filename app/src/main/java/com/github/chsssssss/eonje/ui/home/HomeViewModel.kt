@@ -166,6 +166,7 @@ class HomeViewModel @Inject constructor(
             showCreateFolderSheet = showCreateFolder,
             folderAssignForPlaceId = folderAssign.placeId,
             folderAssignSelectedFolderId = folderAssign.selectedFolderId,
+            hasNoSavedPlaces = places.isEmpty(),
         )
     }.stateIn(
         scope = viewModelScope,

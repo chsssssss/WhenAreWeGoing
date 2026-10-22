@@ -20,6 +20,18 @@ object Events {
     /** 정리 화면 다중 모드에서 저장. [Param.EXTRACTED_COUNT], [Param.SAVED_COUNT]. */
     const val MULTI_PLACE_SAVED = "multi_place_saved"
 
+    /** 온보딩 화면이 뜸. [Param.SOURCE] = [OnboardingEntry]. */
+    const val ONBOARDING_VIEWED = "onboarding_viewed"
+
+    /** 온보딩 마지막 장에서 "시작하기". [Param.SOURCE] = [OnboardingEntry], [Param.STEP] = 본 장 수. */
+    const val ONBOARDING_COMPLETED = "onboarding_completed"
+
+    /** 온보딩을 "건너뛰기"로 끝냄. [Param.SOURCE] = [OnboardingEntry], [Param.STEP] = 건너뛴 장(1부터). */
+    const val ONBOARDING_SKIPPED = "onboarding_skipped"
+
+    /** 온보딩을 끝낸 뒤 처음으로 공유 저장에 성공함 — 기기당 한 번만. */
+    const val FIRST_SHARE_AFTER_ONBOARDING = "first_share_after_onboarding"
+
     object Param {
         const val STATUS = "status"
         const val LATENCY_MS = "latency_ms"
@@ -28,6 +40,7 @@ object Events {
         const val EXTRACTED_COUNT = "extracted_count"
         const val SOURCE = "source"
         const val SAVED_COUNT = "saved_count"
+        const val STEP = "step"
     }
 
     object Status {
@@ -50,5 +63,12 @@ object Events {
     object Source {
         const val AUTO = "auto"
         const val MANUAL = "manual"
+    }
+
+    /** 온보딩 진입 경로. */
+    object OnboardingEntry {
+        const val FIRST_RUN = "first_run"
+        const val HOME_EMPTY = "home_empty"
+        const val SETTINGS = "settings"
     }
 }

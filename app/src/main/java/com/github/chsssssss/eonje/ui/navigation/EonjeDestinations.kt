@@ -9,5 +9,11 @@ object EonjeDestinations {
 
     fun resolveRoute(postId: String) = "resolve/$postId"
 
+    const val ONBOARDING_ENTRY_ARG = "entry"
+    const val ONBOARDING = "onboarding?$ONBOARDING_ENTRY_ARG={$ONBOARDING_ENTRY_ARG}"
+
+    /** [entry]는 [com.github.chsssssss.eonje.data.analytics.Events.OnboardingEntry] 값 — 진입 경로를 이벤트에 남긴다. */
+    fun onboardingRoute(entry: String) = "onboarding?$ONBOARDING_ENTRY_ARG=$entry"
+
     val topLevelRoutes = setOf(HOME, INBOX, SETTINGS)
 }

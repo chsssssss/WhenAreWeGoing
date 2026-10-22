@@ -6,6 +6,7 @@ import com.github.chsssssss.eonje.data.repository.FolderRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.InstagramMetaLookupRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.KakaoLocalRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.LocationRepositoryImpl
+import com.github.chsssssss.eonje.data.repository.OnboardingRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.PlaceRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.SavedPostRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.ThemePreferenceRepositoryImpl
@@ -15,6 +16,7 @@ import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.InstagramMetaLookupRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
+import com.github.chsssssss.eonje.domain.repository.OnboardingRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
@@ -66,4 +68,8 @@ abstract class RepositoryModule {
     abstract fun bindThemePreferenceRepository(
         impl: ThemePreferenceRepositoryImpl
     ): ThemePreferenceRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindOnboardingRepository(impl: OnboardingRepositoryImpl): OnboardingRepository
 }

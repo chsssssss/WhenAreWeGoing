@@ -75,6 +75,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
@@ -90,6 +91,8 @@ import com.github.chsssssss.eonje.ui.components.FolderAssignSheetContent
 import com.github.chsssssss.eonje.ui.components.FolderChip
 import com.github.chsssssss.eonje.ui.components.FolderMarkerIcon
 import com.github.chsssssss.eonje.ui.components.FolderPickerContent
+import com.github.chsssssss.eonje.ui.components.OutlinedPillButton
+import com.github.chsssssss.eonje.ui.components.PaperPlaneIcon
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
@@ -111,6 +114,7 @@ private val SHEET_SNAP_ANIMATION_SPEC = spring<Float>()
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -132,6 +136,7 @@ fun HomeScreen(
         onOpenCreateFolderSheet = viewModel::onOpenCreateFolderSheet,
         onOpenAddPlaceSheet = viewModel::onOpenAddPlaceSheet,
         onDeleteFolder = viewModel::onDeleteFolder,
+        onOpenGuide = onOpenGuide,
         modifier = modifier,
     )
 
@@ -273,6 +278,7 @@ private fun HomeContent(
     onOpenCreateFolderSheet: () -> Unit,
     onOpenAddPlaceSheet: () -> Unit,
     onDeleteFolder: (String) -> Unit,
+    onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -308,9 +314,15 @@ private fun HomeContent(
     val isDetailMode = highlighted != null
 
     // 선택 상태가 바뀔 때마다(마커/카드 탭, 닫기) Mid로 스냅한다 — 목록/상세 공통.
-    LaunchedEffect(uiState.selectedPlaceId, containerHeightPx) {
+    // 저장된 장소가 하나도 없으면 지도에 보여줄 게 없고, Peek·Mid에선 빈 상태 안내 카드가 잘리므로 Full까지 올린다.
+    LaunchedEffect(uiState.selectedPlaceId, containerHeightPx, uiState.hasNoSavedPlaces) {
         if (containerHeightPx <= 0f) return@LaunchedEffect
-        sheetState.animateTo(if (isDetailMode) SheetStop.Mid else SheetStop.Peek)
+        val target = when {
+            isDetailMode -> SheetStop.Mid
+            uiState.hasNoSavedPlaces -> SheetStop.Full
+            else -> SheetStop.Peek
+        }
+        sheetState.animateTo(target)
     }
 
     Box(
@@ -361,6 +373,7 @@ private fun HomeContent(
                         onAddFolder = onOpenCreateFolderSheet,
                         onAddPlace = onOpenAddPlaceSheet,
                         onDeleteFolder = onDeleteFolder,
+                        onOpenGuide = onOpenGuide,
                     )
                 }
             }
@@ -562,6 +575,7 @@ private fun PlaceListSheetContent(
     onAddFolder: () -> Unit,
     onAddPlace: () -> Unit,
     onDeleteFolder: (String) -> Unit,
+    onOpenGuide: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxWidth().anchoredDraggable(sheetState, Orientation.Vertical)) {
@@ -604,8 +618,10 @@ private fun PlaceListSheetContent(
             PlaceCardList(
                 places = uiState.places,
                 isSearching = uiState.searchQuery.isNotBlank(),
+                hasNoSavedPlaces = uiState.hasNoSavedPlaces,
                 onPlaceClick = onPlaceClick,
                 onOpenFolderPicker = onOpenFolderPicker,
+                onOpenGuide = onOpenGuide,
             )
         }
     }
@@ -705,9 +721,18 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit, on
 private fun PlaceCardList(
     places: List<HomePlace>,
     isSearching: Boolean,
+    hasNoSavedPlaces: Boolean,
     onPlaceClick: (String) -> Unit,
     onOpenFolderPicker: (String) -> Unit,
+    onOpenGuide: () -> Unit,
 ) {
+    if (hasNoSavedPlaces) {
+        // 시트를 Mid로 내려도 버튼까지 닿을 수 있게 스크롤로 감싼다 — nestedScroll이 남는 드래그는 시트로 넘긴다.
+        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            EmptyPlacesGuideCard(onOpenGuide = onOpenGuide)
+        }
+        return
+    }
     if (places.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize().padding(top = 40.dp), contentAlignment = Alignment.TopCenter) {
             Text(
@@ -746,6 +771,41 @@ private fun PlaceCardList(
                 FolderChip(folderName = place.folderName, onClick = { onOpenFolderPicker(place.id) })
             }
         }
+    }
+}
+
+/** 저장된 장소가 하나도 없을 때(필터·검색 결과가 비어있는 경우는 제외) 첫 공유를 유도하는 안내 카드. */
+@Composable
+private fun EmptyPlacesGuideCard(onOpenGuide: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(EonjeColors.surfaceVariant)
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(PaperPlaneIcon, contentDescription = null, tint = EonjeColors.accent, modifier = Modifier.size(28.dp))
+        Text(
+            "인스타에서 맛집 게시물을 공유해보세요",
+            style = Typography.titleMedium,
+            color = EonjeColors.textPrimary,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "공유 메뉴에서 '언제가지'를 고르면 가게를 찾아 지도에 저장해요",
+            style = Typography.bodySmall,
+            color = EonjeColors.textMuted,
+            textAlign = TextAlign.Center,
+        )
+        OutlinedPillButton(
+            text = "사용법 다시 보기",
+            onClick = onOpenGuide,
+            height = 44.dp,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -910,6 +970,7 @@ private fun HomeScreenListPreview() {
             onOpenCreateFolderSheet = {},
             onOpenAddPlaceSheet = {},
             onDeleteFolder = {},
+            onOpenGuide = {},
         )
     }
 }
@@ -931,6 +992,7 @@ private fun HomeScreenDetailPreview() {
             onOpenCreateFolderSheet = {},
             onOpenAddPlaceSheet = {},
             onDeleteFolder = {},
+            onOpenGuide = {},
         )
     }
 }
