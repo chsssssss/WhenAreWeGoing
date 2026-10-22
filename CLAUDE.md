@@ -56,7 +56,8 @@ com.github.chsssssss.eonje/
 │  ├─ inbox/
 │  ├─ resolve/         정리 화면 (단일/다중 모드)
 │  ├─ components/      화면 간 공유 컴포저블 (FolderPicker, PlaceholderImage, BottomNavBar 등)
-│  ├─ settings/        테마(라이트/다크/시스템)·개인정보처리방침·버전 정보 (8단계 참고)
+│  ├─ settings/        테마(라이트/다크/시스템)·사용법·개인정보처리방침·버전 정보 (8단계 참고)
+│  ├─ onboarding/      첫 실행 온보딩 (9단계 참고)
 │  └─ theme/
 └─ share/              ShareReceiverActivity
 ```
@@ -135,7 +136,8 @@ enum class UnresolvedReason {
 | HomeScreen | 지도 + 커스텀 바텀시트(목록/상세 모드). 장소 상세는 별도 화면이 아니라 이 시트의 상세 모드로 통합돼 있다(과거 PlaceDetailScreen은 삭제됨) |
 | InboxScreen | 미확정 게시물 카드 목록. 카드별 "후보 N곳" / "직접 찾기" 칩 |
 | ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색. 폴더 선택(선택사항, 다중 모드는 일괄 배정) |
-| SettingsScreen | 화면 테마(시스템 설정/라이트/다크), 개인정보처리방침 링크, 버전 정보 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어낸 뒤, 8단계에서 다시 채움) |
+| SettingsScreen | 화면 테마(시스템 설정/라이트/다크), 사용법(온보딩 다시 보기), 개인정보처리방침 링크, 버전 정보 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어낸 뒤, 8단계에서 다시 채움) |
+| OnboardingScreen | 첫 실행 시 한 번 뜨는 3장 안내. 홈 빈 상태 카드·설정 "사용법"에서 다시 볼 수 있다. 하단 네비게이션 없음 |
 
 하단 네비게이션 3탭: 홈 / 인박스(배지) / 설정
 
@@ -331,6 +333,20 @@ enum class UnresolvedReason {
 - [x] R8/난독화 — `release` 빌드에 `isMinifyEnabled = true` + `isShrinkResources = true` 켬. 실제 사용 중인 라이브러리(Retrofit, OkHttp, kotlinx.serialization, ML Kit GenAI, Firebase AI)의 AAR/jar를 직접 열어 확인해보니 전부 `META-INF/proguard` 또는 `proguard.txt`로 자체 consumer 규칙을 내장하고 있어서 손댈 게 없었고, **카카오맵 SDK(`com.kakao.maps.open:android`)만 유일하게 내장 규칙이 전혀 없는 데다 JNI 네이티브 라이브러리(`libK3fAndroid.so`)까지 써서** `proguard-rules.pro`에 `-keep class com.kakao.vectormap.** { *; }` 추가. `assembleRelease` 후 `missing_rules.txt`가 안 생겼고(R8이 못 찾은 참조 없음), Galaxy Note9(API 29)에 새 릴리스 키로 서명한 APK를 직접 설치해 확인: Compose UI·Hilt·StateFlow·SharedPreferences 기반 테마 저장까지 전부 정상 동작, 카카오맵 관련 예외 스택트레이스에 `com.kakao.vectormap.MapAuthException` 등 원래 클래스명이 그대로 남아있어 keep 규칙이 제대로 먹힌 것도 확인
 - [x] 카카오 디벨로퍼스 콘솔에 릴리스 키 해시(`Hax1qjOPQX3hNGF6cVKAUh5eLPA=`) 등록 완료. **주의**: Play Console에 업로드하면 Play App Signing이 이 업로드 키와 별개인 자체 배포 서명 키로 앱을 다시 서명하므로, 실제 사용자에게 배포되는 빌드가 지도를 쓰려면 Play Console의 "앱 무결성(App integrity)" 메뉴에서 그 배포 서명 키의 SHA-1도 확인해서 카카오 콘솔에 추가로 등록해야 함(최초 업로드 후에만 확인 가능)
 - [x] **최종 실기기 검증(2026-09-23)** — 릴리스 키 등록 후 Galaxy Note9에 릴리스+R8 APK를 새로 설치해 전 과정 재확인: 지도 정상 렌더링(더 이상 `MapAuthException` 없음), 설정 화면(테마·링크·버전) 정상, F1 공유 저장이 인박스 배지에 즉시 반영, F2 `CaptionParsingWorker`가 실행되며 WorkManager 재시도(backoff)까지 정상 동작. 다만 이 테스트에서는 Firebase AI Logic 호출 직전 `FirebaseContextProvider: Error getting App Check token`으로 재시도만 반복됐는데 — 이건 R8 문제가 아니라 **Play Console에 아직 앱을 올리지 않아 Play Integrity가 이 릴리스 서명을 검증할 수 없어서** 생기는, 첫 업로드 전엔 피할 수 없는 정상적인 상태다(테스트에 쓴 인스타그램 URL도 실존 게시물이 아니었어서 어차피 Apify 조회는 실패했을 것). 전체 세션 동안 FATAL 크래시 0건, 앱 프로세스 끝까지 안정적으로 유지됨
+
+### 9단계 — 첫 실행 온보딩 + 홈 빈 상태 (완료, 2026-10-22)
+
+공유 시트에서 '언제가지'를 고르는 게 앱의 유일한 입력 경로인데, 처음 설치한 사용자는 이걸 알 방법이 없어서 첫 실행 안내를 추가했다.
+
+- [x] `OnboardingScreen` — `HorizontalPager` 3장(인스타 게시물 열기 → 공유 버튼에서 '언제가지' 선택 → 자동 저장·못 찾으면 인박스). 건너뛰기/다음/시작하기. 공유 안내 아이콘은 Material `Send`가 아니라 인스타 공유 버튼과 같은 종이비행기 외곽선(`ui/components/PaperPlaneIcon.kt`) — 사용자가 실제 버튼과 바로 연결 짓게 하려는 것
+- [x] 완료 여부는 `OnboardingRepository`(DataStore Preferences, 파일명 `onboarding`)에 저장한다. 시작하기·건너뛰기 둘 다 완료로 친다. **DataStore는 직접 선언한 의존성이 아니라 Glance(`glance-appwidget`)가 끌어오는 `datastore-preferences`를 그대로 쓴다** — 위젯을 걷어내거나 Glance를 빼면 `libs.versions.toml`에 명시적으로 추가해야 한다
+- [x] 시작 화면 결정: `AppShellViewModel.onboardingCompleted`가 null(DataStore 읽는 중)이면 배경만 그리고, 값이 나오면 그 값으로 한 번만 `startDestination`(홈/온보딩)을 정한다. 알림 권한(`NotificationPermissionRequester`)은 완료 후에만, 위치 권한은 `HomeScreen`이 뜰 때 요청하므로 온보딩 위에 권한 팝업이 겹치지 않는다
+- [x] 다시 보기 진입점 두 곳 — 홈 빈 상태 카드의 [사용법 다시 보기], 설정 "정보" 섹션의 "사용법". 라우트는 `onboarding?entry={entry}`이고, 끝나면 뒤에 화면이 있으면 pop, 첫 실행이면 홈으로 교체한다
+- [x] 홈 빈 상태 — 필터·검색과 무관하게 저장된 장소가 0개(`HomeUiState.hasNoSavedPlaces`)일 때 "인스타에서 맛집 게시물을 공유해보세요" 카드. Mid(40%)에선 카드가 잘려서(Note9 기준 보이는 높이 약 135dp, 카드 약 210dp) 이때만 시트를 Full로 올리고 카드 영역은 스크롤 가능하게 했다. 로딩 중 깜빡임을 막으려고 기본값은 false
+- [x] Analytics(`Events`) — `onboarding_viewed`/`onboarding_completed`/`onboarding_skipped`에 `source`(`first_run`·`home_empty`·`settings`)와 `step`(1부터; completed는 3, skipped는 건너뛴 장). `first_share_after_onboarding`은 온보딩 완료 후 첫 공유 저장 시 기기당 한 번 — `ShareReceiverActivity`에서 기존 `share_received` 바로 뒤에 찍고, DataStore 오류는 삼켜서 F1 저장에는 영향이 없다
+- [x] Galaxy Note9(API 29) 디버그 빌드에서 첫 실행·재실행 시 미표시·다시 보기(홈/설정)·건너뛰기·시작하기·시스템 뒤로가기와 이벤트 로그(Analytics DebugView용 `FA-SVC` logcat) 확인(2026-10-22). `first_share_after_onboarding`은 실제 공유(Apify 호출 과금)가 필요해 아직 미확인
+
+**참고** — 이 업데이트 이전부터 설치돼 있던 사용자도 온보딩을 한 번 보게 된다(완료 플래그가 없으므로). 그리고 Play 스토어에서 받은 빌드는 Play 배포 키로 서명돼 있어서 로컬 빌드(디버그·릴리스 모두)로 덮어쓸 수 없다 — 실기기 테스트하려면 앱을 지우고(데이터 삭제됨) 설치해야 한다.
 
 ## 코딩 컨벤션
 
