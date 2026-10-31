@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 다크 모드 시작 테마: 다크 배경 + 오렌지 원 아이콘 배경. 아이콘 배경이 있으면 시스템이 아이콘을
+         더 작은 영역(240dp 중 160dp 원)에 그리지만 비율은 같아서(2/3) 글리프가 잘리지 않는다. -->
+    <style name="Theme.Eonje.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/splash_brand</item>
+        <item name="postSplashScreenTheme">@style/Theme.Eonje</item>
+    </style>
+</resources>

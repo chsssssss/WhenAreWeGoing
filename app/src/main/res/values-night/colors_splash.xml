@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 다크: 화면 전체를 오렌지로 채우면 너무 밝아서, 앱 다크 배경(EonjeDarkPalette.background)을 깔고
+         아이콘 뒤에만 오렌지 원(windowSplashScreenIconBackgroundColor)을 둔다 — values-night/themes.xml 참고 -->
+    <color name="splash_background">#121316</color>
+</resources>

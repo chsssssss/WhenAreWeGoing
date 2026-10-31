@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 런처 아이콘 배경(drawable/ic_launcher_background.xml)과 같은 오렌지 -->
+    <color name="splash_brand">#E2693D</color>
+    <!-- 라이트: 화면 전체를 브랜드 오렌지로 채워 런처 아이콘과 같은 인상을 준다 -->
+    <color name="splash_background">@color/splash_brand</color>
+</resources>

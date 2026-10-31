@@ -4,11 +4,13 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -23,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -42,8 +45,19 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var themePreferenceRepository: ThemePreferenceRepository
 
+    // EonjeApp의 hiltViewModel()과 같은 액티비티 스코프·같은 키라 동일한 인스턴스다.
+    private val shellViewModel: AppShellViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        // 실제 준비 상태(시작 화면 결정 + 장소 목록 첫 로딩)까지만 유지한다. 상한을 둬서 DB가 느리거나
+        // 멈춰도 스플래시에 갇히지 않는다 — 넘기면 EonjeApp의 빈 배경/홈의 로딩 흐름이 이어받는다.
+        val splashStart = SystemClock.uptimeMillis()
+        splashScreen.setKeepOnScreenCondition {
+            !shellViewModel.isReady.value &&
+                SystemClock.uptimeMillis() - splashStart < SPLASH_MAX_KEEP_MILLIS
+        }
         enableEdgeToEdge()
         setContent {
             val themeMode by themePreferenceRepository.themeMode.collectAsState()
@@ -53,9 +67,13 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.DARK -> true
             }
             EonjeTheme(darkTheme = darkTheme) {
-                EonjeApp()
+                EonjeApp(shellViewModel)
             }
         }
+    }
+
+    private companion object {
+        const val SPLASH_MAX_KEEP_MILLIS = 1_000L
     }
 }
 

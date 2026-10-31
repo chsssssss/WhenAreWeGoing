@@ -3,6 +3,16 @@
 
     <style name="Theme.Eonje" parent="android:Theme.Material.Light.NoActionBar" />
 
+    <!-- MainActivity 시작 테마. installSplashScreen() 이후 postSplashScreenTheme(Theme.Eonje)으로 바뀐다.
+         속성은 core-splashscreen의 호환 속성(android: 접두사 없음)이라 API 26~30에서도 같은 모양으로 그려진다.
+         아이콘은 런처 어댑티브 아이콘의 foreground를 그대로 쓴다 — 글리프가 중심에서 반지름 45% 안에 있어
+         스플래시 원형 마스크(66.7%) 안에 잘리지 않고 들어간다. -->
+    <style name="Theme.Eonje.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Eonje</item>
+    </style>
+
     <style name="Theme.Eonje.Transparent" parent="android:Theme.Translucent.NoTitleBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
