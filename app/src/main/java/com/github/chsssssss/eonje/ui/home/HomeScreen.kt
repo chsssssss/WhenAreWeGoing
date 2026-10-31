@@ -125,9 +125,18 @@ private val SHEET_SNAP_ANIMATION_SPEC = spring<Float>()
 fun HomeScreen(
     onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
+    requestedPlaceId: String? = null,
+    onRequestedPlaceHandled: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // 홈 화면 위젯에서 장소를 탭해 들어온 경우 — 시트 상세 모드로 바로 연다(존재 확인은 AppShellViewModel이 끝냄).
+    LaunchedEffect(requestedPlaceId) {
+        if (requestedPlaceId != null) {
+            viewModel.openPlaceFromWidget(requestedPlaceId)
+            onRequestedPlaceHandled()
+        }
+    }
     val context = LocalContext.current
     LocationPermissionRequester(onResult = viewModel::refreshCurrentLocation)
     OnResumeEffect(onResume = viewModel::refreshCurrentLocation)

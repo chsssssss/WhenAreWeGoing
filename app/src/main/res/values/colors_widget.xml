@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 위젯 로딩·미리보기(RemoteViews XML)용. 실제 위젯은 Glance가 eonjeColorScheme()으로 같은 색을 쓴다. -->
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_on_surface">#201F1D</color>
+    <color name="widget_on_surface_variant">#433F3A</color>
+    <color name="widget_primary">#C97A32</color>
+    <!-- 위젯 배경: 흰 네모 대신 크림→살구빛으로 은은하게 번지는 그라데이션. 라벨 칩은 같은 톤을 한 단계 진하게. -->
+    <color name="widget_bg_start">#FFF9F2</color>
+    <color name="widget_bg_end">#FBE8D6</color>
+    <color name="widget_chip">#F8DCC2</color>
+</resources>

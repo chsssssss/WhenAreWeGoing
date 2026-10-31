@@ -32,6 +32,15 @@ object Events {
     /** 온보딩을 끝낸 뒤 처음으로 공유 저장에 성공함 — 기기당 한 번만. */
     const val FIRST_SHARE_AFTER_ONBOARDING = "first_share_after_onboarding"
 
+    /** '오늘의 맛집' 위젯을 처음 하나 놓음 (AppWidgetProvider.onEnabled — 두 번째 위젯부터는 안 찍힘). */
+    const val WIDGET_ADDED = "widget_added"
+
+    /** 홈 화면의 '오늘의 맛집' 위젯이 전부 제거됨 (AppWidgetProvider.onDisabled). */
+    const val WIDGET_REMOVED = "widget_removed"
+
+    /** 위젯을 탭해서 앱이 열림. [Param.TARGET] = [WidgetTarget]. 가게 이름·id는 넣지 않는다. */
+    const val WIDGET_CLICKED = "widget_clicked"
+
     object Param {
         const val STATUS = "status"
         const val LATENCY_MS = "latency_ms"
@@ -41,6 +50,13 @@ object Events {
         const val SOURCE = "source"
         const val SAVED_COUNT = "saved_count"
         const val STEP = "step"
+        const val TARGET = "target"
+    }
+
+    /** 위젯에서 무엇을 탭했는지. */
+    object WidgetTarget {
+        const val PLACE = "place"
+        const val EMPTY = "empty"
     }
 
     object Status {

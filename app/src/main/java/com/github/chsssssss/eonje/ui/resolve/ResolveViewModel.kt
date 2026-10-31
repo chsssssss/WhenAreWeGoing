@@ -1,7 +1,5 @@
 package com.github.chsssssss.eonje.ui.resolve
 
-import android.content.Context
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,11 +15,9 @@ import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
-import com.github.chsssssss.eonje.widget.PlaceRecommendationWidget
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.logEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,7 +46,6 @@ class ResolveViewModel @Inject constructor(
     private val kakaoLocalRepository: KakaoLocalRepository,
     private val extractedCandidateRepository: ExtractedCandidateRepository,
     private val folderRepository: FolderRepository,
-    @param:ApplicationContext private val context: Context,
     private val analytics: FirebaseAnalytics,
 ) : ViewModel() {
 
@@ -229,7 +224,6 @@ class ResolveViewModel @Inject constructor(
             savePlace(candidate)
             savedPostRepository.updateStatus(postId, ResolveStatus.RESOLVED, unresolvedReason = null)
             logManualResolved()
-            PlaceRecommendationWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
             _events.send(ResolveEvent.Toast("${candidate.name} 저장됨"))
@@ -252,7 +246,6 @@ class ResolveViewModel @Inject constructor(
                 param(Events.Param.EXTRACTED_COUNT, state.multiGroups.size.toLong())
                 param(Events.Param.SAVED_COUNT, toSave.size.toLong())
             }
-            PlaceRecommendationWidget().updateAll(context)
 
             _uiState.update { it.copy(isSaving = false) }
             val message = if (toSave.size == 1) "${toSave.first().selected!!.name} 저장됨" else "${toSave.size}곳 저장됨"

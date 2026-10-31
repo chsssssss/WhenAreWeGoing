@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 오늘의 맛집 위젯 배경. 모서리를 드로어블로 둥글려서 cornerRadius가 안 먹는 API 30 이하에서도 둥글게 보인다. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:endColor="@color/widget_bg_end"
+        android:startColor="@color/widget_bg_start"
+        android:type="linear" />
+    <corners android:radius="24dp" />
+</shape>

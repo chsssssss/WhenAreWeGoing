@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +30,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.domain.model.ThemeMode
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import com.github.chsssssss.eonje.ui.components.BottomNavBar
@@ -37,6 +39,9 @@ import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
 import com.github.chsssssss.eonje.ui.navigation.EonjeNavHost
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.EonjeTheme
+import com.github.chsssssss.eonje.widget.TodayPlaceWidget
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.logEvent
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -44,6 +49,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var themePreferenceRepository: ThemePreferenceRepository
+    @Inject lateinit var analytics: FirebaseAnalytics
 
     // EonjeApp의 hiltViewModel()과 같은 액티비티 스코프·같은 키라 동일한 인스턴스다.
     private val shellViewModel: AppShellViewModel by viewModels()
@@ -59,6 +65,8 @@ class MainActivity : ComponentActivity() {
                 SystemClock.uptimeMillis() - splashStart < SPLASH_MAX_KEEP_MILLIS
         }
         enableEdgeToEdge()
+        // 회전 등으로 다시 만들어질 땐 같은 인텐트를 또 처리하지 않는다.
+        if (savedInstanceState == null) handleWidgetIntent(intent)
         setContent {
             val themeMode by themePreferenceRepository.themeMode.collectAsState()
             val darkTheme = when (themeMode) {
@@ -70,6 +78,22 @@ class MainActivity : ComponentActivity() {
                 EonjeApp(shellViewModel)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetIntent(intent)
+    }
+
+    private fun handleWidgetIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(TodayPlaceWidget.EXTRA_FROM_WIDGET, false) != true) return
+        val placeId = intent.getStringExtra(TodayPlaceWidget.EXTRA_PLACE_ID)
+        // 장소 id·이름은 남기지 않고 무엇을 탭했는지만 남긴다.
+        analytics.logEvent(Events.WIDGET_CLICKED) {
+            param(Events.Param.TARGET, if (placeId != null) Events.WidgetTarget.PLACE else Events.WidgetTarget.EMPTY)
+        }
+        shellViewModel.onOpenedFromWidget(placeId)
     }
 
     private companion object {
@@ -94,6 +118,15 @@ private fun EonjeApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
     if (completed) NotificationPermissionRequester()
 
     val navController = rememberNavController()
+    LaunchedEffect(navController) {
+        shellViewModel.openHomeRequests.collect {
+            navController.navigate(EonjeDestinations.HOME) {
+                popUpTo(EonjeDestinations.HOME)
+                launchSingleTop = true
+            }
+        }
+    }
+    val widgetPlaceRequest by shellViewModel.widgetPlaceRequest.collectAsState()
     val badgeCount by shellViewModel.inboxBadgeCount.collectAsState()
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
@@ -118,6 +151,8 @@ private fun EonjeApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
         EonjeNavHost(
             navController = navController,
             startDestination = startDestination,
+            widgetPlaceRequest = widgetPlaceRequest,
+            onWidgetPlaceRequestHandled = shellViewModel::onWidgetPlaceRequestHandled,
             modifier = Modifier.padding(innerPadding),
         )
     }

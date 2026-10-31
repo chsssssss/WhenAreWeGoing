@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">언제가지</string>
+
+    <!-- 홈 화면 위젯 선택 목록 -->
+    <string name="widget_today_place_name">오늘의 맛집</string>
+    <string name="widget_today_place_description">저장해 둔 맛집을 하루에 하나씩 보여줘요</string>
+    <!-- 위젯 미리보기 전용 예시 값 (실제 저장 데이터 아님) -->
+    <string name="widget_preview_place_name">동네 국숫집</string>
+    <string name="widget_preview_place_meta">성동구 · 🍽️ 회사 근처</string>
 </resources>

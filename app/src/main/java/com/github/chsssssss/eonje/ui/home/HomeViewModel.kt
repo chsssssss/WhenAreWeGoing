@@ -192,6 +192,13 @@ class HomeViewModel @Inject constructor(
         selectedPlaceId.value = placeId
     }
 
+    /** 위젯에서 탭한 장소 열기 — 필터·검색에 가려 상세가 안 열리는 일이 없도록 둘 다 풀고 선택한다. */
+    fun openPlaceFromWidget(placeId: String) {
+        searchQuery.value = ""
+        folderFilter.value = FolderFilter.All
+        selectedPlaceId.value = placeId
+    }
+
     fun onSelectFolderFilter(filter: FolderFilter) {
         folderFilter.value = filter
     }

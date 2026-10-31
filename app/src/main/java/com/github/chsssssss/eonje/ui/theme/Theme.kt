@@ -42,6 +42,10 @@ private fun colorSchemeFrom(palette: EonjePalette, dark: Boolean): ColorScheme {
     }
 }
 
+/** 앱과 같은 Material 3 색 체계 — 홈 화면 위젯(Glance)도 이걸로 라이트/다크 색을 맞춘다. */
+fun eonjeColorScheme(dark: Boolean): ColorScheme =
+    colorSchemeFrom(if (dark) EonjeDarkPalette else EonjeLightPalette, dark)
+
 @Composable
 fun EonjeTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val palette = if (darkTheme) EonjeDarkPalette else EonjeLightPalette

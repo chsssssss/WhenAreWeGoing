@@ -18,6 +18,8 @@ import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.OnboardingRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
+import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
+import com.github.chsssssss.eonje.widget.TodayPlaceWidgetUpdater
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import dagger.Binds
@@ -62,6 +64,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindFolderRepository(impl: FolderRepositoryImpl): FolderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPlacesChangedNotifier(impl: TodayPlaceWidgetUpdater): PlacesChangedNotifier
 
     @Binds
     @Singleton

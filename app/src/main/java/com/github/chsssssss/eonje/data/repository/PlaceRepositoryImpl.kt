@@ -5,12 +5,14 @@ import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRef
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRefDao
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
+import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class PlaceRepositoryImpl @Inject constructor(
     private val placeDao: PlaceDao,
     private val crossRefDao: PostPlaceCrossRefDao,
+    private val placesChangedNotifier: PlacesChangedNotifier,
 ) : PlaceRepository {
 
     override suspend fun findByKakaoPlaceId(kakaoPlaceId: String): PlaceEntity? =
@@ -22,6 +24,7 @@ class PlaceRepositoryImpl @Inject constructor(
         val existing = place.kakaoPlaceId?.let { placeDao.findByKakaoPlaceId(it) }
         if (existing != null) return existing.id
         placeDao.insert(place)
+        placesChangedNotifier.notifyPlacesChanged()
         return place.id
     }
 
@@ -34,14 +37,19 @@ class PlaceRepositoryImpl @Inject constructor(
 
     override fun observeAll(): Flow<List<PlaceEntity>> = placeDao.observeAll()
 
-    override suspend fun assignFolder(placeId: String, folderId: String?) =
+    override suspend fun assignFolder(placeId: String, folderId: String?) {
         placeDao.updateFolder(placeId, folderId)
+        placesChangedNotifier.notifyPlacesChanged()
+    }
 
-    override suspend fun assignFolderToPlaces(placeIds: List<String>, folderId: String?) =
+    override suspend fun assignFolderToPlaces(placeIds: List<String>, folderId: String?) {
         placeDao.updateFolderForPlaces(placeIds, folderId)
+        placesChangedNotifier.notifyPlacesChanged()
+    }
 
     override suspend fun delete(placeId: String) {
         crossRefDao.deleteForPlace(placeId)
         placeDao.delete(placeId)
+        placesChangedNotifier.notifyPlacesChanged()
     }
 }

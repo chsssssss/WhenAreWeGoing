@@ -23,7 +23,7 @@ class PlaceRepositoryImplTest {
     fun `save reuses existing place when kakaoPlaceId already saved`() = runBlocking {
         val placeDao = FakePlaceDao()
         val crossRefDao = FakePostPlaceCrossRefDao()
-        val repository = PlaceRepositoryImpl(placeDao, crossRefDao)
+        val repository = PlaceRepositoryImpl(placeDao, crossRefDao, placesChangedNotifier = {})
 
         // @fooddaegu 게시물에서 추출한 가게를 먼저 확정 저장
         val firstId = repository.save(place(kakaoPlaceId = "kakao-1234", name = "대구탕집"))
@@ -46,7 +46,7 @@ class PlaceRepositoryImplTest {
     fun `save creates separate places when kakaoPlaceId differs`() = runBlocking {
         val placeDao = FakePlaceDao()
         val crossRefDao = FakePostPlaceCrossRefDao()
-        val repository = PlaceRepositoryImpl(placeDao, crossRefDao)
+        val repository = PlaceRepositoryImpl(placeDao, crossRefDao, placesChangedNotifier = {})
 
         val firstId = repository.save(place(kakaoPlaceId = "kakao-1111", name = "가게 A"))
         val secondId = repository.save(place(kakaoPlaceId = "kakao-2222", name = "가게 B"))

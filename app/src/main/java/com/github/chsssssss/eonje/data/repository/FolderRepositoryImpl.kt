@@ -4,6 +4,7 @@ import com.github.chsssssss.eonje.data.local.FolderDao
 import com.github.chsssssss.eonje.data.local.FolderEntity
 import com.github.chsssssss.eonje.data.local.PlaceDao
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
+import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
@@ -11,6 +12,7 @@ import javax.inject.Inject
 class FolderRepositoryImpl @Inject constructor(
     private val folderDao: FolderDao,
     private val placeDao: PlaceDao,
+    private val placesChangedNotifier: PlacesChangedNotifier,
 ) : FolderRepository {
 
     override fun observeAll(): Flow<List<FolderEntity>> = folderDao.observeAll()
@@ -44,5 +46,7 @@ class FolderRepositoryImpl @Inject constructor(
     override suspend fun delete(folderId: String) {
         placeDao.clearFolder(folderId)
         folderDao.delete(folderId)
+        // 이 폴더에 있던 장소는 미분류가 된다 — 위젯의 폴더 줄도 바뀌어야 한다.
+        placesChangedNotifier.notifyPlacesChanged()
     }
 }

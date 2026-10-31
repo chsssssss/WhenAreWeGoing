@@ -18,6 +18,8 @@ import com.github.chsssssss.eonje.ui.settings.SettingsScreen
 fun EonjeNavHost(
     navController: NavHostController,
     startDestination: String,
+    widgetPlaceRequest: String?,
+    onWidgetPlaceRequestHandled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -27,6 +29,8 @@ fun EonjeNavHost(
     ) {
         composable(EonjeDestinations.HOME) {
             HomeScreen(
+                requestedPlaceId = widgetPlaceRequest,
+                onRequestedPlaceHandled = onWidgetPlaceRequestHandled,
                 onOpenGuide = {
                     navController.navigate(EonjeDestinations.onboardingRoute(Events.OnboardingEntry.HOME_EMPTY))
                 },

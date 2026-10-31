@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- '오늘의 맛집' 위젯. 파일·Receiver 이름은 기존 위젯 호환을 위해 유지.
+     updatePeriodMillis=0: 주기 갱신은 TodayPlaceWidgetWorker(하루 1회, 자정 직후)와 앱 내 장소 변경 시점에만 한다.
+     기본 3x1 가로형(한 줄 레이아웃). 2칸 높이 이상으로 늘리면 라벨 칩이 위에 붙는 세로형 레이아웃으로 바뀐다. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:minWidth="110dp"
-    android:minHeight="40dp"
-    android:targetCellWidth="2"
-    tools:targetApi="31"
-    android:targetCellHeight="1"
-    android:updatePeriodMillis="1800000"
+    android:description="@string/widget_today_place_description"
     android:initialLayout="@layout/place_recommendation_widget_loading"
+    android:minWidth="180dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:previewImage="@drawable/widget_preview_image"
+    android:previewLayout="@layout/today_place_widget_preview"
     android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="0"
     android:widgetCategory="home_screen"
-    android:previewImage="@mipmap/ic_launcher" />
+    tools:targetApi="31" />
