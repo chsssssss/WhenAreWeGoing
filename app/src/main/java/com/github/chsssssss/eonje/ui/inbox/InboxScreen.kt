@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.chsssssss.eonje.ui.components.CandidateStatusChip
-import com.github.chsssssss.eonje.ui.components.FilledPillButton
 import com.github.chsssssss.eonje.ui.components.PlaceholderImage
 import com.github.chsssssss.eonje.ui.components.ProcessingStatusChip
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
@@ -121,6 +120,8 @@ private fun InboxContent(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 20.dp),
+                // 하단 버튼을 없앤 뒤 마지막 카드가 화면 끝에 붙지 않도록 여백을 둔다.
+                contentPadding = PaddingValues(bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(uiState.items, key = { it.id }) { item ->
@@ -131,15 +132,6 @@ private fun InboxContent(
                     )
                 }
             }
-
-            FilledPillButton(
-                text = "순서대로 정리하기",
-                icon = Icons.Filled.Check,
-                onClick = { onItemClick(uiState.items.first().id) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp, 16.dp, 20.dp, 18.dp),
-            )
         }
     }
 }
