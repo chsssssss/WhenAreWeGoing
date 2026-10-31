@@ -385,6 +385,8 @@ private fun HomeContent(
     val density = LocalDensity.current
     val windowHeightPx = LocalWindowInfo.current.containerSize.height
     var containerHeightPx by remember { mutableStateOf(0f) }
+    // 실제 높이로 앵커를 잡기 전엔 오프셋이 0(화면 맨 위)이라, 그 사이 프레임에 시트가 위로 번쩍 보이지 않게 화면 밖에 둔다.
+    var sheetAnchorsReady by remember { mutableStateOf(false) }
 
     val sheetState = remember {
         AnchoredDraggableState(
@@ -402,13 +404,17 @@ private fun HomeContent(
         val peekPx = with(density) { SHEET_PEEK_HEIGHT.toPx() }
         val midPx = containerHeightPx * SHEET_MID_FRACTION
         val fullPx = containerHeightPx * SHEET_FULL_FRACTION
+        // newTarget을 생략하면 '현재 오프셋에 가장 가까운 정지점'으로 스냅하는데, 첫 측정 전 임시 앵커가 전부 0f(화면 맨 위)라
+        // 처음 열 때 Full로 올라간 채 시작했다. 지금 목표 정지점(처음엔 Peek)을 그대로 유지한다.
         sheetState.updateAnchors(
-            DraggableAnchors {
+            newAnchors = DraggableAnchors {
                 SheetStop.Peek at (containerHeightPx - peekPx)
                 SheetStop.Mid at (containerHeightPx - midPx)
                 SheetStop.Full at (containerHeightPx - fullPx)
-            }
+            },
+            newTarget = sheetState.targetValue,
         )
+        sheetAnchorsReady = true
     }
 
     val highlighted = uiState.highlighted
@@ -447,7 +453,10 @@ private fun HomeContent(
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
                 .height(sheetHeightDp)
-                .offset { IntOffset(0, sheetState.requireOffset().roundToInt()) },
+                .offset {
+                    val y = if (sheetAnchorsReady) sheetState.requireOffset() else windowHeightPx.toFloat()
+                    IntOffset(0, y.roundToInt())
+                },
         ) {
             Column(
                 modifier = Modifier
