@@ -29,9 +29,11 @@
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
 
+        <!-- 세로 고정. targetSdk 36부터 큰 화면(최소 폭 600dp 이상)에서는 시스템이 이 고정을 무시한다. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Eonje.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
