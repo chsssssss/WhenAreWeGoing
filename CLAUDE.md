@@ -59,7 +59,8 @@ com.github.chsssssss.eonje/
 │  ├─ settings/        테마(라이트/다크/시스템)·사용법·개인정보처리방침·버전 정보 (8단계 참고)
 │  ├─ onboarding/      첫 실행 온보딩 (9단계 참고)
 │  └─ theme/
-└─ share/              ShareReceiverActivity
+├─ share/              ShareReceiverActivity
+└─ widget/             홈 화면 위젯 '오늘의 맛집' (Glance, 10단계 참고)
 ```
 
 ## 데이터 모델
@@ -231,7 +232,7 @@ enum class UnresolvedReason {
 
 **Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외.
 
-**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다 — 빌드 타입별 소스셋(`src/debug`, `src/release`의 `appCheckProviderFactory()`)에서 고르고 `firebase-appcheck-debug`는 `debugImplementation`이라 릴리스엔 디버그 프로바이더 코드가 아예 들어가지 않는다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다. fir-gemini의 Firebase AI Logic은 App Check **재생 보호(1회용 토큰)**까지 켜져 있어서, `Firebase.ai(...)`에 `useLimitedUseAppCheckTokens = true`를 꼭 넘겨야 한다 — 빠뜨리면 일반 토큰이 "재사용된 토큰"으로 집계되며 `ServerException: Firebase App Check token is invalid`로 전부 거부된다(2026-10-17 확인).
+**App Check가 필수인 이유** — Firebase AI Logic은 남용 방지를 위해 App Check로 검증된 요청만 받는다(미설치 시 `ServerException: ... you must enforce Firebase App Check`로 전부 거부됨). 프로젝트 콘솔에서 해당 API(Firebase AI Logic/Generative Language API)의 App Check 강제 적용을 별도로 켜둬야 한다 — 클라이언트 SDK 설치만으로는 부족하다. `EonjeApplication`에서 디버그 빌드는 Debug Provider, 릴리스 빌드는 Play Integrity Provider를 프로젝트별로 설치한다 — 빌드 타입별 소스셋(`src/debug`, `src/release`의 `appCheckProviderFactory()`)에서 고르고 `firebase-appcheck-debug`는 `debugImplementation`이라 릴리스엔 디버그 프로바이더 코드가 아예 들어가지 않는다. Debug Provider의 디바이스별 토큰은 각 프로젝트의 Firebase 콘솔(App Check > 앱 > 디버그 토큰 관리, 또는 `firebase appcheck:debugtokens:create`)에 등록해야 그 기기에서 호출이 통과한다 — 새 개발 기기를 쓸 때마다, 그리고 프로젝트를 하나 더 쓰게 될 때마다 필요한 일회성 작업. **토큰은 앱 데이터에 저장되므로 앱을 지웠다 다시 설치하면(예: Play 스토어 빌드를 지우고 디버그 빌드 설치) 새 토큰이 생겨 다시 등록해야 한다** — 등록 전 공유한 게시물은 `fetchInstagramMeta`가 403(`App attestation failed`)으로 거부돼 재시도 5회 후 `UNRESOLVED(NETWORK_ERROR)`로 끝난다(2026-10-31, Apify 호출 전 단계라 과금 없음). `fetchInstagramMeta` Cloud Function도 `enforceAppCheck: true`로 동일하게 보호한다. fir-gemini의 Firebase AI Logic은 App Check **재생 보호(1회용 토큰)**까지 켜져 있어서, `Firebase.ai(...)`에 `useLimitedUseAppCheckTokens = true`를 꼭 넘겨야 한다 — 빠뜨리면 일반 토큰이 "재사용된 토큰"으로 집계되며 `ServerException: Firebase App Check token is invalid`로 전부 거부된다(2026-10-17 확인).
 
 **Apify 토큰과 Cloud Function 배포** — `functions/index.js`가 Apify API 토큰을 쥐고 있어서 앱에는 절대 내장하지 않는다. 배포 전 1회 `firebase functions:secrets:set APIFY_TOKEN`으로 토큰을 등록하고, 이후 `firebase deploy --only functions`로 배포한다(둘 다 `firebase login` 후 CLI에서 직접 실행 — 에이전트가 대신 실행할 수 없다). `firebase.json`/`.firebaserc`가 프로젝트(`wherewegoing-a5493`)를 가리키도록 이미 세팅돼 있다.
 
@@ -272,7 +273,7 @@ enum class UnresolvedReason {
 
 ### 4단계 — 다듬기 (완료)
 
-- [x] 위젯 — 홈 화면 위젯 (7단계에서 인박스 정리 대기 개수 표시에서 랜덤 장소 추천으로 교체됨)
+- [x] 위젯 — 홈 화면 위젯 (7단계에서 인박스 정리 대기 개수 표시에서 랜덤 장소 추천으로, 10단계에서 '오늘의 맛집'으로 교체됨)
 - [x] 정리 알림 — 정리 안 된 게시물이 있으면 주기적으로(7일마다) 알림
 - [x] 오래된 미확정 항목 정리 제안 — 30일 넘은 항목을 인박스에서 일괄 삭제 제안
 
@@ -306,7 +307,7 @@ enum class UnresolvedReason {
 - [x] 길찾기 버튼을 카카오맵 공유 링크로 연결
 - [x] `AnchoredDraggableState.settle()`에 `snapAnimationSpec`을 직접 안 넘겨서 빠른 플링 시 나던 크래시 수정
 
-### 7단계 — 위젯을 랜덤 장소 추천으로 교체 (완료, 2026-09-21)
+### 7단계 — 위젯을 랜덤 장소 추천으로 교체 (완료, 2026-09-21 — 10단계에서 '오늘의 맛집'으로 다시 교체됨)
 
 인박스 정리 대기 개수만 보여주던 홈 화면 위젯(`InboxWidget`)을 걷어내고, 저장된 장소(RESOLVED) 중 하나를 랜덤으로 보여주는 `PlaceRecommendationWidget`으로 교체했다. "오늘 뭐 먹지" 같은 상황에서 인박스 상태보다 장소 추천이 더 쓸모 있다고 판단.
 
@@ -347,6 +348,22 @@ enum class UnresolvedReason {
 - [x] Galaxy Note9(API 29) 디버그 빌드에서 첫 실행·재실행 시 미표시·다시 보기(홈/설정)·건너뛰기·시작하기·시스템 뒤로가기와 이벤트 로그(Analytics DebugView용 `FA-SVC` logcat) 확인(2026-10-22). `first_share_after_onboarding`은 실제 공유(Apify 호출 과금)가 필요해 아직 미확인
 
 **참고** — 이 업데이트 이전부터 설치돼 있던 사용자도 온보딩을 한 번 보게 된다(완료 플래그가 없으므로). 그리고 Play 스토어에서 받은 빌드는 Play 배포 키로 서명돼 있어서 로컬 빌드(디버그·릴리스 모두)로 덮어쓸 수 없다 — 실기기 테스트하려면 앱을 지우고(데이터 삭제됨) 설치해야 한다.
+
+### 10단계 — 스플래시 + '오늘의 맛집' 위젯 + 다듬기 (완료, 2026-10-31)
+
+- [x] **스플래시** — `core-splashscreen`. `MainActivity` 테마를 `Theme.Eonje.Starting`(Theme.SplashScreen)으로 두고 `installSplashScreen()`을 `super.onCreate` 전에 호출. 배경은 런처 아이콘 배경색(`#E2693D`), 아이콘은 어댑티브 포그라운드 재사용, 다크는 `values-night`에서 아이콘 배경 원으로 처리. 유지 조건은 `AppShellViewModel.isReady`(시작 화면 결정 + 장소 목록 첫 Room 읽기)이고 최대 1초 상한 — 인위적 지연 없음. 공유 수신(`ShareReceiverActivity`)엔 스플래시가 없다. 카카오맵 SDK 초기화는 설치 직후 첫 실행만 약 340ms, 이후 15~40ms라 스플래시 길이에 거의 영향 없음
+- [x] **'오늘의 맛집' 위젯** (`widget/TodayPlaceWidget`) — 7단계 랜덤 위젯을 교체. Receiver 클래스명(`PlaceRecommendationWidgetReceiver`)과 `xml/place_recommendation_widget_info.xml`은 이미 홈에 놓인 위젯 호환을 위해 이름 유지
+  - RESOLVED 장소 중 하루 하나: 날짜·오늘 장소·어제 장소를 SharedPreferences(`today_place_widget`, `TodayPickStore`)에 저장해 같은 날엔 같은 장소, 다음 날엔 어제와 다른 장소. 선택 로직은 순수 함수 `chooseTodayPick`(단위 테스트 있음)
+  - 표시: 이름·동네·폴더(아이콘+이름, 미분류면 숨김). 동네는 스키마 변경 없이 저장된 주소에서 동/읍/면 → 구/군 → 시 순으로 뽑는다(`neighborhoodOf`). 주소가 대부분 도로명이라 실제론 구 단위가 많다 — 동 단위가 필요하면 지번 주소 컬럼이 필요(스키마 변경)
+  - 갱신: 장소 저장·삭제·폴더 배정·폴더 삭제는 `PlaceRepositoryImpl`/`FolderRepositoryImpl`이 `PlacesChangedNotifier`(구현 `TodayPlaceWidgetUpdater`)를 불러 한곳에서 처리 — 화면별로 `updateAll`을 부르지 않는다. 날짜 변경은 `TodayPlaceWidgetWorker`(하루 1회, 자정 5분 뒤, 위젯 추가 시 예약·전부 제거 시 취소). `updatePeriodMillis=0`, 네트워크 호출 없음
+  - 탭: `MainActivity`가 extra(`EXTRA_FROM_WIDGET`/`EXTRA_PLACE_ID`)를 받아 홈 시트의 해당 장소 상세로 연다(폴더 필터·검색 해제). 그 사이 삭제됐거나 미확정이면 홈만 연다. 온보딩 전이면 아무것도 안 함
+  - 모양: `glance-material3`로 앱 M3 색(`eonjeColorScheme`) 사용, 시스템 다크 모드만 따른다(앱 내 테마 설정은 반영 안 됨). 배경은 크림→살구빛 그라데이션 드로어블(`widget_background`, 모서리를 드로어블에도 넣어 API 30 이하도 둥글게). 기본 3x1 가로형(핀 배지 + 라벨·이름·동네 · 폴더), 2칸 높이 이상이면 라벨 칩이 위에 붙는 세로형
+  - Analytics: `widget_added`/`widget_removed`/`widget_clicked`(`target`=`place`|`empty`). 가게 이름·id·좌표는 넣지 않는다
+  - 일부러 뺀 것: 폴더 선택 설정(configure 화면), 주변 맛집, 썸네일 이미지, "다른 곳 보기" 셔플(하루 고정과 충돌)
+- [x] **홈 바텀시트가 Peek으로 시작** — 첫 측정 전 임시 앵커가 전부 0f라 `updateAnchors`의 기본 `newTarget`(현재 오프셋에 가장 가까운 정지점)이 Full을 골라 올라간 채 시작했다. `newTarget = sheetState.targetValue`를 명시하고, 앵커가 잡히기 전엔 시트를 화면 밖에 둔다
+- [x] **인박스 '순서대로 정리하기' 버튼 제거** — 첫 카드를 여는 것과 같은 동작이었고 다음 항목으로 이어지는 흐름도 없었다
+- [x] API 36 에뮬레이터(릴리스 빌드)에서 스플래시 라이트/다크, 위젯 추가·빈 상태·장소 탭·삭제 후 갱신·폴더 변경·다크·크기 조절·이벤트 확인, Galaxy Note9(디버그)에서 인박스 확인. versionCode 5로 `bundleRelease`
+- **미확인**: API 30 이하 스플래시·위젯 모양, 실제 자정 넘김 시 워커 실행, 기존 위젯을 둔 채 앱 업데이트하는 경로
 
 ## 코딩 컨벤션
 
