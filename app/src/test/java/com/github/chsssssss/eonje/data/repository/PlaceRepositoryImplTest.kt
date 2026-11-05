@@ -4,9 +4,11 @@ import com.github.chsssssss.eonje.data.local.PlaceDao
 import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRef
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRefDao
+import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -55,15 +57,65 @@ class PlaceRepositoryImplTest {
         assertEquals(2, placeDao.insertedCount)
     }
 
-    private fun place(kakaoPlaceId: String?, name: String) = PlaceEntity(
-        id = "generated-$name",
+    @Test
+    fun `같은 id를 다시 저장해도 기존 memo는 지워지지 않는다`() = runBlocking {
+        val placeDao = FakePlaceDao()
+        // 메모 기능이 있던 시절에 저장된 행(memo 있음)
+        placeDao.seed(entity(id = "p1", name = "옛 이름", memo = "단골 가게"))
+        val repository = PlaceRepositoryImpl(placeDao, FakePostPlaceCrossRefDao(), placesChangedNotifier = {})
+
+        repository.save(place(kakaoPlaceId = null, name = "새 이름", id = "p1"))
+
+        val stored = placeDao.findById("p1")!!
+        assertEquals("새 값은 반영되고", "새 이름", stored.name)
+        assertEquals("memo는 그대로 남아야 한다", "단골 가게", stored.memo)
+    }
+
+    @Test
+    fun `새 장소는 memo 없이 저장된다`() = runBlocking {
+        val placeDao = FakePlaceDao()
+        val repository = PlaceRepositoryImpl(placeDao, FakePostPlaceCrossRefDao(), placesChangedNotifier = {})
+
+        repository.save(place(kakaoPlaceId = "k1", name = "가게"))
+
+        assertEquals(null, placeDao.findById("generated-가게")!!.memo)
+    }
+
+    @Test
+    fun `폴더 배정과 삭제는 memo에 영향이 없고 observeAll은 memo 없는 도메인 모델을 낸다`() = runBlocking {
+        val placeDao = FakePlaceDao()
+        placeDao.seed(entity(id = "p1", name = "가게", memo = "메모"))
+        val repository = PlaceRepositoryImpl(placeDao, FakePostPlaceCrossRefDao(), placesChangedNotifier = {})
+
+        repository.assignFolder("p1", "folder-1")
+
+        assertEquals("메모", placeDao.findById("p1")!!.memo)
+        val observed = repository.observeAll().first()
+        assertEquals(listOf(Place("p1", "가게", null, null, null, "kakao-p1", null, ResolveStatus.RESOLVED, 0L, 0L, "folder-1")), observed)
+    }
+
+    private fun place(kakaoPlaceId: String?, name: String, id: String = "generated-$name") = Place(
+        id = id,
         name = name,
         address = null,
         latitude = null,
         longitude = null,
         kakaoPlaceId = kakaoPlaceId,
         category = null,
-        memo = null,
+        status = ResolveStatus.RESOLVED,
+        createdAt = 0L,
+        resolvedAt = 0L,
+    )
+
+    private fun entity(id: String, name: String, memo: String?) = PlaceEntity(
+        id = id,
+        name = name,
+        address = null,
+        latitude = null,
+        longitude = null,
+        kakaoPlaceId = "kakao-$id",
+        category = null,
+        memo = memo,
         status = ResolveStatus.RESOLVED,
         createdAt = 0L,
         resolvedAt = 0L,
@@ -73,6 +125,11 @@ class PlaceRepositoryImplTest {
         private val places = mutableMapOf<String, PlaceEntity>()
         var insertedCount = 0
             private set
+
+        /** insert 횟수에 잡히지 않게 기존 행을 심는다. */
+        fun seed(place: PlaceEntity) {
+            places[place.id] = place
+        }
 
         override suspend fun insert(place: PlaceEntity) {
             places[place.id] = place

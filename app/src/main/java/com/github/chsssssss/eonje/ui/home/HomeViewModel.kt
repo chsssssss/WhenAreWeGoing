@@ -3,10 +3,10 @@ package com.github.chsssssss.eonje.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.chsssssss.eonje.data.local.FolderEntity
-import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 import com.github.chsssssss.eonje.domain.model.LocationAvailability
+import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
@@ -331,7 +331,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             placeRepository.save(
-                PlaceEntity(
+                Place(
                     id = UUID.randomUUID().toString(),
                     name = candidate.name,
                     address = candidate.address,
@@ -339,7 +339,6 @@ class HomeViewModel @Inject constructor(
                     longitude = candidate.longitude,
                     kakaoPlaceId = candidate.kakaoPlaceId,
                     category = candidate.category,
-                    memo = null,
                     status = ResolveStatus.RESOLVED,
                     createdAt = now,
                     resolvedAt = now,
@@ -365,7 +364,7 @@ private data class ViewState(
     val folderAssign: FolderAssignState,
 )
 
-private fun PlaceEntity.toHomePlace(thumbnailUrl: String?, folder: FolderEntity?) = HomePlace(
+private fun Place.toHomePlace(thumbnailUrl: String?, folder: FolderEntity?) = HomePlace(
     id = id,
     name = name ?: "이름 없는 장소",
     category = category.orEmpty(),
@@ -377,7 +376,6 @@ private fun PlaceEntity.toHomePlace(thumbnailUrl: String?, folder: FolderEntity?
     folderName = folder?.name,
     folderColor = folder?.color ?: FolderVisuals.DEFAULT_COLOR,
     folderIcon = folder?.iconKey ?: FolderVisuals.DEFAULT_ICON,
-    memo = memo.orEmpty(),
 )
 
 private fun SavedPost.toHomePlacePost() = HomePlacePost(

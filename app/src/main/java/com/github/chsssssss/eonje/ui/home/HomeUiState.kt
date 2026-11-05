@@ -24,7 +24,6 @@ data class HomePlace(
     val folderName: String? = null,
     val folderColor: Int = FolderVisuals.DEFAULT_COLOR,
     val folderIcon: String = FolderVisuals.DEFAULT_ICON,
-    val memo: String = "",
 )
 
 data class HomePlacePost(

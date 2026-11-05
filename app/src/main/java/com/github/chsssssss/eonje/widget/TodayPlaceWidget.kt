@@ -45,7 +45,7 @@ import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
-/** 위젯에 그릴 값만 추린 것 — PlaceEntity를 그대로 넘기지 않는다. */
+/** 위젯에 그릴 값만 추린 것 — 도메인 Place를 그대로 넘기지 않는다. */
 private data class TodayPlace(
     val id: String,
     val name: String,

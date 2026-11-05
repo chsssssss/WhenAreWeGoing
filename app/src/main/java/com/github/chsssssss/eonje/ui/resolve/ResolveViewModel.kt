@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
-import com.github.chsssssss.eonje.data.local.PlaceEntity
+import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
@@ -261,7 +261,7 @@ class ResolveViewModel @Inject constructor(
     private suspend fun savePlace(candidate: PlaceCandidate) {
         val now = System.currentTimeMillis()
         val placeId = placeRepository.save(
-            PlaceEntity(
+            Place(
                 id = UUID.randomUUID().toString(),
                 name = candidate.name,
                 address = candidate.address,
@@ -269,7 +269,6 @@ class ResolveViewModel @Inject constructor(
                 longitude = candidate.longitude,
                 kakaoPlaceId = candidate.kakaoPlaceId,
                 category = candidate.category,
-                memo = null,
                 status = ResolveStatus.RESOLVED,
                 createdAt = now,
                 resolvedAt = now,

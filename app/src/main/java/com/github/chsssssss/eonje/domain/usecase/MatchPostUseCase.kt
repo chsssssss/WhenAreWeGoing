@@ -3,9 +3,9 @@ package com.github.chsssssss.eonje.domain.usecase
 import android.os.SystemClock
 import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
-import com.github.chsssssss.eonje.data.local.PlaceEntity
 import com.github.chsssssss.eonje.data.local.ThumbnailStore
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
+import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
@@ -199,7 +199,7 @@ class MatchPostUseCase @Inject constructor(
     private suspend fun autoResolve(postId: String, candidate: PlaceCandidate) {
         val now = System.currentTimeMillis()
         val placeId = placeRepository.save(
-            PlaceEntity(
+            Place(
                 id = UUID.randomUUID().toString(),
                 name = candidate.name,
                 address = candidate.address,
@@ -207,7 +207,6 @@ class MatchPostUseCase @Inject constructor(
                 longitude = candidate.longitude,
                 kakaoPlaceId = candidate.kakaoPlaceId,
                 category = candidate.category,
-                memo = null,
                 status = ResolveStatus.RESOLVED,
                 createdAt = now,
                 resolvedAt = now,
