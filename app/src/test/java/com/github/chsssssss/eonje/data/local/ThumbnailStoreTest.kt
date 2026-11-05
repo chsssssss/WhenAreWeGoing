@@ -223,10 +223,13 @@ internal class FakeCodec(
         DownscaleResult.Done(640, 800)
     },
 ) : ImageCodec {
+    /** 파일마다 다른 probe 결과가 필요한 테스트용. 기본은 [probeResult]. */
+    var probeFor: (File) -> ImageBounds? = { probeResult }
+
     var downscaleCalls = 0
         private set
 
-    override fun probe(file: File): ImageBounds? = probeResult
+    override fun probe(file: File): ImageBounds? = probeFor(file)
 
     override fun downscale(src: File, dest: File, maxLongSide: Int, quality: Int): DownscaleResult {
         downscaleCalls++

@@ -41,7 +41,15 @@ object Events {
     /** 위젯을 탭해서 앱이 열림. [Param.TARGET] = [WidgetTarget]. 가게 이름·id는 넣지 않는다. */
     const val WIDGET_CLICKED = "widget_clicked"
 
+    /**
+     * 업데이트 후 기존 썸네일 1회 정리가 끝남. [Param.FILE_COUNT] = 줄이거나 지운 파일 수,
+     * [Param.SAVED_BYTES] = 줄어든 총 바이트. 숫자만 남긴다.
+     */
+    const val THUMBNAIL_COMPACTION_DONE = "thumbnail_compaction_done"
+
     object Param {
+        const val FILE_COUNT = "file_count"
+        const val SAVED_BYTES = "saved_bytes"
         const val STATUS = "status"
         const val LATENCY_MS = "latency_ms"
         const val ENGINE = "engine"

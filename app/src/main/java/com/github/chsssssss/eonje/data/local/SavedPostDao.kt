@@ -37,6 +37,10 @@ interface SavedPostDao {
     )
     suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int)
 
+    // 로컬 썸네일 파일(file://)이 망가져서 지울 때, 이 게시물이 가리키던 경로를 비운다. 원격 URL 폴백이 저장돼 있으면 건드리지 않는다.
+    @Query("UPDATE saved_posts SET thumbnailUrl = NULL WHERE id = :id AND thumbnailUrl LIKE 'file://%'")
+    suspend fun clearLocalThumbnail(id: String)
+
     @Query("SELECT * FROM saved_posts ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<SavedPostEntity>>
 

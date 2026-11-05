@@ -33,6 +33,8 @@ class SavedPostRepositoryImpl @Inject constructor(
         thumbnailStore.deleteAll(ids)
     }
 
+    override suspend fun clearLocalThumbnail(id: String) = dao.clearLocalThumbnail(id)
+
     override fun observeAll(): Flow<List<SavedPostEntity>> = dao.observeAll()
 
     override fun observeUnresolved(): Flow<List<SavedPostEntity>> = dao.observeUnresolved()

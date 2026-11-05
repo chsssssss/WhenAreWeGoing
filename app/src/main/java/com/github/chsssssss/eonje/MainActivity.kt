@@ -30,7 +30,9 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.analytics.Events
+import com.github.chsssssss.eonje.data.worker.ThumbnailMaintenanceWorker
 import com.github.chsssssss.eonje.domain.model.ThemeMode
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import com.github.chsssssss.eonje.ui.components.BottomNavBar
@@ -67,6 +69,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // 회전 등으로 다시 만들어질 땐 같은 인텐트를 또 처리하지 않는다.
         if (savedInstanceState == null) handleWidgetIntent(intent)
+        // 썸네일 폴더 정리(고아 파일 삭제 + 업데이트 후 1회 줄이기). 백그라운드에서 돌고 화면과 무관하다.
+        if (savedInstanceState == null) ThumbnailMaintenanceWorker.enqueue(WorkManager.getInstance(applicationContext))
         setContent {
             val themeMode by themePreferenceRepository.themeMode.collectAsState()
             val darkTheme = when (themeMode) {
