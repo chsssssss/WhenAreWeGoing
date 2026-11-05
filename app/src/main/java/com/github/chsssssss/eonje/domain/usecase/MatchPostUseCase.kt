@@ -2,8 +2,8 @@ package com.github.chsssssss.eonje.domain.usecase
 
 import android.os.SystemClock
 import com.github.chsssssss.eonje.data.analytics.Events
-import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
 import com.github.chsssssss.eonje.data.local.ThumbnailStore
+import com.github.chsssssss.eonje.domain.model.ExtractedCandidate
 import com.github.chsssssss.eonje.domain.model.ExtractedPlace
 import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
@@ -222,23 +222,18 @@ class MatchPostUseCase @Inject constructor(
         postId: String,
         searched: List<Pair<ExtractedPlace, List<PlaceCandidate>>>,
     ) {
-        val entities = searched.flatMapIndexed { index, (place, candidates) ->
+        val rows = searched.flatMapIndexed { index, (place, candidates) ->
             candidates.take(MAX_CANDIDATES_PER_ITEM).mapIndexed { rank, candidate ->
-                ExtractedCandidateEntity(
+                ExtractedCandidate(
                     postId = postId,
                     extractionIndex = index,
                     extractedName = place.name,
                     rank = rank,
-                    kakaoPlaceId = candidate.kakaoPlaceId,
-                    name = candidate.name,
-                    address = candidate.address,
-                    category = candidate.category,
-                    latitude = candidate.latitude,
-                    longitude = candidate.longitude,
+                    place = candidate,
                 )
             }
         }
-        extractedCandidateRepository.replaceForPost(postId, entities)
+        extractedCandidateRepository.replaceForPost(postId, rows)
         savedPostRepository.updateStatus(postId, ResolveStatus.NEEDS_REVIEW, unresolvedReason = null)
     }
 

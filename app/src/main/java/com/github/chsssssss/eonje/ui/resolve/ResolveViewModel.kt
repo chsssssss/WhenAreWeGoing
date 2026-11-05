@@ -4,7 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.chsssssss.eonje.data.analytics.Events
-import com.github.chsssssss.eonje.data.local.ExtractedCandidateEntity
+import com.github.chsssssss.eonje.domain.model.ExtractedCandidate
 import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
@@ -93,12 +93,12 @@ class ResolveViewModel @Inject constructor(
         }
     }
 
-    private fun buildGroups(rows: List<ExtractedCandidateEntity>): List<MultiCandidateGroup> =
+    private fun buildGroups(rows: List<ExtractedCandidate>): List<MultiCandidateGroup> =
         rows.groupBy { it.extractionIndex }
             .toSortedMap()
             .map { (index, group) ->
                 val sorted = group.sortedBy { it.rank }
-                val candidates = sorted.map { it.toPlaceCandidate() }
+                val candidates = sorted.map { it.place }
                 MultiCandidateGroup(
                     extractionIndex = index,
                     extractedName = sorted.first().extractedName,
@@ -107,15 +107,6 @@ class ResolveViewModel @Inject constructor(
                     checked = candidates.isNotEmpty(),
                 )
             }
-
-    private fun ExtractedCandidateEntity.toPlaceCandidate() = PlaceCandidate(
-        kakaoPlaceId = kakaoPlaceId,
-        name = name,
-        address = address,
-        category = category,
-        latitude = latitude,
-        longitude = longitude,
-    )
 
     private suspend fun runSearch(query: String) {
         if (query.isBlank()) {
