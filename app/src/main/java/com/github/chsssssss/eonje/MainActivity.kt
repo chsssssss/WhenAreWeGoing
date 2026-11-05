@@ -36,6 +36,7 @@ import com.github.chsssssss.eonje.data.worker.ThumbnailMaintenanceWorker
 import com.github.chsssssss.eonje.domain.model.ThemeMode
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import com.github.chsssssss.eonje.ui.components.BottomNavBar
+import com.github.chsssssss.eonje.ui.components.EonjeImageLoader
 import com.github.chsssssss.eonje.ui.navigation.AppShellViewModel
 import com.github.chsssssss.eonje.ui.navigation.EonjeDestinations
 import com.github.chsssssss.eonje.ui.navigation.EonjeNavHost
@@ -66,6 +67,7 @@ class MainActivity : ComponentActivity() {
             !shellViewModel.isReady.value &&
                 SystemClock.uptimeMillis() - splashStart < SPLASH_MAX_KEEP_MILLIS
         }
+        EonjeImageLoader.install(applicationContext) // 첫 이미지 로드(setContent) 전에
         enableEdgeToEdge()
         // 회전 등으로 다시 만들어질 땐 같은 인텐트를 또 처리하지 않는다.
         if (savedInstanceState == null) handleWidgetIntent(intent)
