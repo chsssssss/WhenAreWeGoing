@@ -969,25 +969,26 @@ private fun PlaceDetailSheetContent(
                         color = EonjeColors.textPrimary,
                         modifier = Modifier.weight(1f),
                     )
-                    // IconButton은 내부에서 48dp 정사각형 안에 콘텐츠를 가운데 정렬해서, Row를 Top으로
-                    // 맞춰도 아이콘 자체는 아래로 밀려 보인다 — 제목 첫 줄에 맞춰 진짜로 위쪽에 붙이려고
-                    // 터치 영역만 확보한 Box에 TopCenter로 직접 배치한다.
+                    // 아이콘을 40dp 터치 영역 가운데에 두고(눌림 효과 원이 아이콘 중심과 맞도록),
+                    // 영역 전체를 위로 올려 아이콘 중심을 제목 첫 줄 중심(lineHeight 34sp의 절반)에 맞춘다.
+                    // offset은 배치만 옮기고 레이아웃 크기는 그대로라 제목 줄 높이에 영향이 없다.
                     Box(
                         modifier = Modifier
+                            .offset(y = TitleIconOffsetY)
                             .size(40.dp)
                             .clip(CircleShape)
                             .clickable(onClick = onOpenFolderAssign),
-                        contentAlignment = Alignment.TopCenter,
+                        contentAlignment = Alignment.Center,
                     ) {
                         FolderMarkerIcon(color = place.folderColor, icon = place.folderIcon)
                     }
                     Box(
                         modifier = Modifier
+                            .offset(x = 8.dp, y = TitleIconOffsetY)
                             .size(40.dp)
-                            .offset(x = 8.dp)
                             .clip(CircleShape)
                             .clickable(onClick = onClose),
-                        contentAlignment = Alignment.TopCenter,
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Filled.Close, contentDescription = "닫기", tint = EonjeColors.textSecondary)
                     }
@@ -1116,3 +1117,6 @@ private fun HomeScreenDetailPreview() {
         )
     }
 }
+
+/** 상세 헤더 아이콘 버튼(40dp)의 중심을 제목 첫 줄 중심(34sp / 2 = 17dp)에 맞추는 세로 오프셋. */
+private val TitleIconOffsetY = (-3).dp
