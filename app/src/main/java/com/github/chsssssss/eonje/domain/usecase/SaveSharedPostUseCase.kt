@@ -1,7 +1,7 @@
 package com.github.chsssssss.eonje.domain.usecase
 
 import androidx.work.WorkManager
-import com.github.chsssssss.eonje.data.local.SavedPostEntity
+import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
@@ -35,7 +35,7 @@ class SaveSharedPostUseCase @Inject constructor(
 
             val postId = UUID.randomUUID().toString()
             repository.save(
-                SavedPostEntity(
+                SavedPost(
                     id = postId,
                     shortcode = postUrl.shortcode,
                     instagramUrl = postUrl.canonicalUrl,

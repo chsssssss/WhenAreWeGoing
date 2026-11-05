@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.chsssssss.eonje.data.local.FolderEntity
 import com.github.chsssssss.eonje.data.local.PlaceEntity
-import com.github.chsssssss.eonje.data.local.SavedPostEntity
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 import com.github.chsssssss.eonje.domain.model.LocationAvailability
@@ -15,6 +14,7 @@ import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -380,7 +380,7 @@ private fun PlaceEntity.toHomePlace(thumbnailUrl: String?, folder: FolderEntity?
     memo = memo.orEmpty(),
 )
 
-private fun SavedPostEntity.toHomePlacePost() = HomePlacePost(
+private fun SavedPost.toHomePlacePost() = HomePlacePost(
     id = id,
     label = instagramUrl,
     savedAt = RelativeTimeFormatter.format(createdAt) + " 저장",

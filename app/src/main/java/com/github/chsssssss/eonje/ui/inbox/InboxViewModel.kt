@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.github.chsssssss.eonje.data.local.SavedPostEntity
+import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
@@ -92,7 +92,7 @@ class InboxViewModel @Inject constructor(
         }
     }
 
-    private fun SavedPostEntity.toInboxItem(isProcessing: Boolean) = InboxItem(
+    private fun SavedPost.toInboxItem(isProcessing: Boolean) = InboxItem(
         id = id,
         instagramUrl = instagramUrl,
         relativeTime = RelativeTimeFormatter.format(createdAt),

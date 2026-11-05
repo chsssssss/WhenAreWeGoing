@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje.data.local
 
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import kotlinx.coroutines.CancellationException
@@ -244,7 +245,7 @@ class ThumbnailMaintenanceTest {
 
     private fun file(name: String, size: Int): File = File(dir, name).apply { writeBytes(ByteArray(size)) }
 
-    private fun post(id: String) = SavedPostEntity(
+    private fun post(id: String) = SavedPost(
         id = id,
         shortcode = id,
         instagramUrl = "https://www.instagram.com/p/$id/",
@@ -258,7 +259,7 @@ class ThumbnailMaintenanceTest {
 
     private fun codec(probe: (File) -> ImageBounds?) = FakeCodec().also { it.probeFor = probe }
 
-    private fun maintenance(posts: List<SavedPostEntity>, state: FakeState, codec: FakeCodec = FakeCodec()) =
+    private fun maintenance(posts: List<SavedPost>, state: FakeState, codec: FakeCodec = FakeCodec()) =
         maintenance(FakePosts(posts), state, codec)
 
     private fun maintenance(posts: FakePosts, state: FakeState, codec: FakeCodec = FakeCodec()) =
@@ -273,13 +274,13 @@ private class FakeState(var done: Boolean = false) : ThumbnailMaintenanceState {
 }
 
 private class FakePosts(
-    val all: List<SavedPostEntity>,
+    val all: List<SavedPost>,
     private val failClearFor: String? = null,
 ) : SavedPostRepository {
     val clearedIds = mutableListOf<String>()
     val deletedIds = mutableListOf<String>()
 
-    override fun observeAll(): Flow<List<SavedPostEntity>> = flowOf(all)
+    override fun observeAll(): Flow<List<SavedPost>> = flowOf(all)
 
     override suspend fun clearLocalThumbnail(id: String) {
         if (id == failClearFor) throw IllegalStateException("DB 오류")
@@ -290,11 +291,11 @@ private class FakePosts(
         deletedIds += ids
     }
 
-    override suspend fun findByShortcode(shortcode: String): SavedPostEntity? = null
-    override suspend fun findById(id: String): SavedPostEntity? = null
-    override suspend fun findByIds(ids: List<String>): List<SavedPostEntity> = emptyList()
-    override suspend fun save(post: SavedPostEntity) = Unit
+    override suspend fun findByShortcode(shortcode: String): SavedPost? = null
+    override suspend fun findById(id: String): SavedPost? = null
+    override suspend fun findByIds(ids: List<String>): List<SavedPost> = emptyList()
+    override suspend fun save(post: SavedPost) = Unit
     override suspend fun updateStatus(id: String, status: ResolveStatus, unresolvedReason: UnresolvedReason?) = Unit
     override suspend fun updateExtraction(id: String, caption: String?, thumbnailUrl: String?, extractedCount: Int) = Unit
-    override fun observeUnresolved(): Flow<List<SavedPostEntity>> = flowOf(emptyList())
+    override fun observeUnresolved(): Flow<List<SavedPost>> = flowOf(emptyList())
 }
