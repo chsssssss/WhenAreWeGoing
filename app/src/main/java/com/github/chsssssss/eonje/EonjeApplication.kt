@@ -57,6 +57,7 @@ class EonjeApplication : Application(), Configuration.Provider {
                 .setProjectId(projectId)
                 .setApplicationId(applicationId)
                 .setApiKey(apiKey)
+                .setGcmSenderId(projectNumberOf(applicationId))
                 .build()
             FirebaseApp.initializeApp(this, options)
         }
@@ -81,11 +82,21 @@ class EonjeApplication : Application(), Configuration.Provider {
                     .setProjectId(projectId)
                     .setApplicationId(applicationId)
                     .setApiKey(apiKey)
+                    .setGcmSenderId(projectNumberOf(applicationId))
                     .build(),
                 WHEREWEGOING_FIREBASE_APP_NAME,
             )
         installAppCheck(FirebaseAppCheck.getInstance(app))
     }
+
+    /**
+     * Firebase 앱 ID(`1:<프로젝트 번호>:android:<해시>`)에서 프로젝트 번호를 꺼낸다.
+     * google-services.json 없이 옵션을 직접 만들면 gcmSenderId가 비는데, Play Integrity App Check는
+     * 이 값을 `Long.parseLong`해서 클라우드 프로젝트 번호로 쓰기 때문에 비어 있으면 릴리스(스토어) 빌드에서
+     * 토큰 발급이 항상 실패한다. 디버그 빌드는 Debug Provider라 이 값을 안 써서 드러나지 않았다.
+     */
+    private fun projectNumberOf(applicationId: String): String? =
+        applicationId.split(":").getOrNull(1)?.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
 
     /** 디버그는 Debug Provider, 릴리스는 Play Integrity — 빌드 타입별 소스셋(src/debug, src/release)에서 고른다. */
     private fun installAppCheck(appCheck: FirebaseAppCheck) {
