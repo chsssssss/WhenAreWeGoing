@@ -1,6 +1,6 @@
 package com.github.chsssssss.eonje.ui.resolve
 
-import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 
 data class MultiCandidateGroup(
@@ -29,7 +29,7 @@ data class ResolveUiState(
     val multiGroups: List<MultiCandidateGroup> = emptyList(),
     val isSaving: Boolean = false,
     // 폴더: 단일/다중 공통 — 이번에 확정하는 장소(들)에 한 번에 적용된다. null이면 미분류.
-    val folders: List<FolderEntity> = emptyList(),
+    val folders: List<Folder> = emptyList(),
     val selectedFolderId: String? = null,
     val showFolderPicker: Boolean = false,
 ) {

@@ -1,6 +1,6 @@
 package com.github.chsssssss.eonje.ui.home
 
-import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
@@ -35,7 +35,7 @@ data class HomePlacePost(
 
 data class HomeUiState(
     val places: List<HomePlace> = emptyList(),
-    val folders: List<FolderEntity> = emptyList(),
+    val folders: List<Folder> = emptyList(),
     val folderFilter: FolderFilter = FolderFilter.All,
     val searchQuery: String = "",
     val selectedPlaceId: String? = null,

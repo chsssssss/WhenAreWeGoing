@@ -91,7 +91,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.model.LocationAvailability
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.ui.components.AddFolderContent
@@ -749,13 +749,13 @@ private fun PlaceListSheetContent(
 
 @Composable
 private fun FolderTabsRow(
-    folders: List<FolderEntity>,
+    folders: List<Folder>,
     selected: FolderFilter,
     onSelect: (FolderFilter) -> Unit,
     onAddFolder: () -> Unit,
     onDeleteFolder: (String) -> Unit,
 ) {
-    var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+    var folderPendingDelete by remember { mutableStateOf<Folder?>(null) }
 
     Row(
         modifier = Modifier

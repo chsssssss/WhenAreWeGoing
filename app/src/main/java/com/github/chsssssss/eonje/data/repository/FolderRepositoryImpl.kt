@@ -1,11 +1,14 @@
 package com.github.chsssssss.eonje.data.repository
 
 import com.github.chsssssss.eonje.data.local.FolderDao
-import com.github.chsssssss.eonje.data.local.FolderEntity
 import com.github.chsssssss.eonje.data.local.PlaceDao
+import com.github.chsssssss.eonje.data.mapper.toDomain
+import com.github.chsssssss.eonje.data.mapper.toEntity
+import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 
@@ -15,31 +18,31 @@ class FolderRepositoryImpl @Inject constructor(
     private val placesChangedNotifier: PlacesChangedNotifier,
 ) : FolderRepository {
 
-    override fun observeAll(): Flow<List<FolderEntity>> = folderDao.observeAll()
+    override fun observeAll(): Flow<List<Folder>> = folderDao.observeAll().map { rows -> rows.map { it.toDomain() } }
 
-    override suspend fun findOrCreateByName(name: String): FolderEntity {
+    override suspend fun findOrCreateByName(name: String): Folder {
         val trimmed = name.trim()
-        folderDao.findByName(trimmed)?.let { return it }
-        val folder = FolderEntity(id = UUID.randomUUID().toString(), name = trimmed, createdAt = System.currentTimeMillis())
-        folderDao.insert(folder)
+        folderDao.findByName(trimmed)?.let { return it.toDomain() }
+        val folder = Folder(id = UUID.randomUUID().toString(), name = trimmed, createdAt = System.currentTimeMillis())
+        folderDao.insert(folder.toEntity())
         return folder
     }
 
-    override suspend fun createWithAppearance(name: String, color: Int, iconKey: String): FolderEntity {
+    override suspend fun createWithAppearance(name: String, color: Int, iconKey: String): Folder {
         val trimmed = name.trim()
         val existing = folderDao.findByName(trimmed)
         if (existing != null) {
             folderDao.updateAppearance(existing.id, color, iconKey)
-            return existing.copy(color = color, iconKey = iconKey)
+            return existing.toDomain().copy(color = color, iconKey = iconKey)
         }
-        val folder = FolderEntity(
+        val folder = Folder(
             id = UUID.randomUUID().toString(),
             name = trimmed,
             createdAt = System.currentTimeMillis(),
             color = color,
             iconKey = iconKey,
         )
-        folderDao.insert(folder)
+        folderDao.insert(folder.toEntity())
         return folder
     }
 

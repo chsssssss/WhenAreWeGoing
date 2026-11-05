@@ -2,7 +2,7 @@ package com.github.chsssssss.eonje.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 import com.github.chsssssss.eonje.domain.model.LocationAvailability
@@ -364,7 +364,7 @@ private data class ViewState(
     val folderAssign: FolderAssignState,
 )
 
-private fun Place.toHomePlace(thumbnailUrl: String?, folder: FolderEntity?) = HomePlace(
+private fun Place.toHomePlace(thumbnailUrl: String?, folder: Folder?) = HomePlace(
     id = id,
     name = name ?: "이름 없는 장소",
     category = category.orEmpty(),

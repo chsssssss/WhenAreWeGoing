@@ -43,7 +43,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.chsssssss.eonje.data.local.FolderEntity
+import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.Typography
@@ -57,7 +57,7 @@ private const val UNCLASSIFIED_LABEL = "미분류"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderPickerContent(
-    folders: List<FolderEntity>,
+    folders: List<Folder>,
     selectedFolderId: String?,
     onSelectFolder: (String?) -> Unit,
     onCreateFolder: (String) -> Unit,
@@ -65,7 +65,7 @@ fun FolderPickerContent(
     modifier: Modifier = Modifier,
 ) {
     var newFolderName by remember { mutableStateOf("") }
-    var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+    var folderPendingDelete by remember { mutableStateOf<Folder?>(null) }
 
     Column(
         modifier = modifier
@@ -194,7 +194,7 @@ private fun FolderRow(label: String, selected: Boolean, onClick: () -> Unit, onD
 @Composable
 fun FolderAssignSheetContent(
     placeName: String,
-    folders: List<FolderEntity>,
+    folders: List<Folder>,
     selectedFolderId: String?,
     willDeletePlace: Boolean,
     onToggleFolder: (String) -> Unit,
@@ -202,7 +202,7 @@ fun FolderAssignSheetContent(
     onDeleteFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+    var folderPendingDelete by remember { mutableStateOf<Folder?>(null) }
     var showDeletePlaceConfirm by remember { mutableStateOf(false) }
 
     Column(
@@ -281,7 +281,7 @@ fun FolderAssignSheetContent(
 }
 
 @Composable
-private fun CheckableFolderRow(folder: FolderEntity, checked: Boolean, onClick: () -> Unit, onDeleteClick: () -> Unit) {
+private fun CheckableFolderRow(folder: Folder, checked: Boolean, onClick: () -> Unit, onDeleteClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
