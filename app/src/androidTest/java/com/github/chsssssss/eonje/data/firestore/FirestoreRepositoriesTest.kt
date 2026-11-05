@@ -404,6 +404,43 @@ class FirestoreRepositoriesTest {
         assertEquals(setOf("p1"), posts.cachedPostIds())
     }
 
+    // ── 공유 수신(메인 스레드 runBlocking) ──
+
+    /**
+     * ShareReceiverActivity는 메인 스레드에서 runBlocking으로 저장하고 finish()한다. 여기서 한 번이라도 서버나 메인 스레드
+     * 콜백을 기다리면 ANR이 난다. 오프라인에서도 제한 시간 안에 끝나는지, 막히면 메인 스레드가 어디서 멈췄는지 확인한다.
+     */
+    @Test
+    fun 메인_스레드에서_공유_저장_경로가_오프라인에서도_막히지_않는다() {
+        firestore.disableNetwork().let { runBlocking { it.await() } }
+        val main = android.os.Looper.getMainLooper().thread
+        var failure: Throwable? = null
+        var stackWhenStuck: String? = null
+        val watchdog = Thread {
+            Thread.sleep(4_000)
+            stackWhenStuck = main.stackTrace.joinToString("\n") { "    at $it" }
+        }.also { it.start() }
+
+        val progress = mutableListOf<String>()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            try {
+                runBlocking {
+                    withTimeout(3_000) { assertNull(posts.findByShortcode("MAIN-1")) }
+                    progress += "1 findByShortcode 끝"
+                    withTimeout(3_000) { posts.save(post("main-thread-post", shortcode = "MAIN-1")) }
+                    progress += "2 save 끝"
+                    withTimeout(3_000) { assertEquals("main-thread-post", posts.findByShortcode("MAIN-1")?.id) }
+                    progress += "3 findByShortcode(저장 후) 끝"
+                }
+            } catch (t: Throwable) {
+                failure = t
+            }
+        }
+        watchdog.join()
+
+        if (failure != null) fail("메인 스레드에서 막혔다: $failure (진행: $progress)\n4초 시점 메인 스레드 스택:\n$stackWhenStuck")
+    }
+
     // ── 도구 ──
 
     private suspend fun awaitPlaces(timeoutMillis: Long = TIMEOUT, condition: (List<Place>) -> Boolean): List<Place> =

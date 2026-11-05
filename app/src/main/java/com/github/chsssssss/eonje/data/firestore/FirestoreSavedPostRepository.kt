@@ -99,8 +99,10 @@ class FirestoreSavedPostRepository @Inject constructor(
         ref.set(post.toFields(), SetOptions.mergeFields(POST_DOMAIN_FIELDS)).logFailure("게시물 저장")
         // 서버 응답은 기다리지 않는다. 대신 같은 큐에서 로컬 캐시를 읽어서, 방금 쓴 게 로컬에 반영된 뒤에 돌아온다 —
         // 공유 수신이 finish() 직후 프로세스가 정리돼도 저장이 로컬에 남도록.
+        // 주의: DocumentReference.get(Source.CACHE)는 결과가 메인 스레드를 거쳐서, 공유 수신처럼 메인 스레드를 runBlocking으로
+        // 막고 있으면 서로 기다리다 ANR이 난다(실기기 검증에서 재현). 쿼리의 캐시 읽기는 메인 스레드를 거치지 않아서 이걸 쓴다.
         try {
-            ref.get(Source.CACHE).await()
+            firestore.posts(uid).whereEqualTo(FieldPath.documentId(), post.id).limit(1).get(Source.CACHE).await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
