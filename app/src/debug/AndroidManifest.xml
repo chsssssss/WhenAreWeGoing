@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 디버그 빌드 전용: Firebase Auth 에뮬레이터는 HTTP(평문)라서 호스트 PC 주소로만 평문을 허용한다. 릴리스엔 포함되지 않는다. -->
+    <application android:networkSecurityConfig="@xml/network_security_config_debug" />
+</manifest>

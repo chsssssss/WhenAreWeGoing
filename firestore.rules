@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// 개인 데이터는 전부 users/{uid} 아래에 있고, 본인(익명 로그인 포함)만 읽고 쓸 수 있다.
+// 친구 공유 기능은 별도 최상위 컬렉션으로 추가할 예정이라 이 규칙은 그걸 막지 않는다(그때 규칙을 따로 추가한다).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

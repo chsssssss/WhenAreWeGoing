@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Emulator Suite가 도는 호스트 PC만 평문을 허용한다(10.0.2.2 = 안드로이드 에뮬레이터에서 본 호스트, localhost = adb reverse). -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

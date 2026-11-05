@@ -105,7 +105,24 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Firebase Emulator Suite(Auth+Firestore) 연결 옵션 — 기본은 꺼짐. 켜려면 -PfirebaseEmulator=true 로 빌드한다.
+            // 안드로이드 에뮬레이터에서 호스트 PC는 10.0.2.2다(실기기는 adb reverse 후 -PfirebaseEmulatorHost=localhost).
+            buildConfigField(
+                "boolean",
+                "USE_FIREBASE_EMULATOR",
+                (project.findProperty("firebaseEmulator") == "true").toString(),
+            )
+            buildConfigField(
+                "String",
+                "FIREBASE_EMULATOR_HOST",
+                "\"${project.findProperty("firebaseEmulatorHost") ?: "10.0.2.2"}\"",
+            )
+        }
         release {
+            // 릴리스에는 에뮬레이터 연결이 절대 들어가지 않는다(src/release의 connectFirebaseEmulators는 아무것도 하지 않음).
+            buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
+            buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -164,6 +181,9 @@ dependencies {
     // 디버그 프로바이더는 릴리스에 포함하지 않는다 — src/debug, src/release의 appCheckProviderFactory() 참고.
     debugImplementation(libs.firebase.appcheck.debug)
     implementation(libs.firebase.functions)
+    // 데이터 원본(Firestore)과 익명 로그인 — 둘 다 named FirebaseApp "wherewegoing"에만 붙인다(data/firestore 참고).
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
     implementation(libs.firebase.analytics)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.mlkit.genai.prompt)
