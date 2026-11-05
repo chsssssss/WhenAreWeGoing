@@ -1,14 +1,14 @@
 package com.github.chsssssss.eonje.di
 
 import com.github.chsssssss.eonje.data.repository.CaptionParsingRepositoryImpl
-import com.github.chsssssss.eonje.data.repository.ExtractedCandidateRepositoryImpl
-import com.github.chsssssss.eonje.data.repository.FolderRepositoryImpl
+import com.github.chsssssss.eonje.data.repository.RoomExtractedCandidateRepository
+import com.github.chsssssss.eonje.data.repository.RoomFolderRepository
 import com.github.chsssssss.eonje.data.repository.InstagramMetaLookupRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.KakaoLocalRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.LocationRepositoryImpl
 import com.github.chsssssss.eonje.data.repository.OnboardingRepositoryImpl
-import com.github.chsssssss.eonje.data.repository.PlaceRepositoryImpl
-import com.github.chsssssss.eonje.data.repository.SavedPostRepositoryImpl
+import com.github.chsssssss.eonje.data.repository.RoomPlaceRepository
+import com.github.chsssssss.eonje.data.repository.RoomSavedPostRepository
 import com.github.chsssssss.eonje.data.repository.ThemePreferenceRepositoryImpl
 import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
@@ -33,11 +33,11 @@ import javax.inject.Singleton
 abstract class RepositoryModule {
     @Binds
     @Singleton
-    abstract fun bindSavedPostRepository(impl: SavedPostRepositoryImpl): SavedPostRepository
+    abstract fun bindSavedPostRepository(impl: RoomSavedPostRepository): SavedPostRepository
 
     @Binds
     @Singleton
-    abstract fun bindPlaceRepository(impl: PlaceRepositoryImpl): PlaceRepository
+    abstract fun bindPlaceRepository(impl: RoomPlaceRepository): PlaceRepository
 
     @Binds
     @Singleton
@@ -49,7 +49,7 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun bindExtractedCandidateRepository(impl: ExtractedCandidateRepositoryImpl): ExtractedCandidateRepository
+    abstract fun bindExtractedCandidateRepository(impl: RoomExtractedCandidateRepository): ExtractedCandidateRepository
 
     @Binds
     @Singleton
@@ -63,7 +63,7 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun bindFolderRepository(impl: FolderRepositoryImpl): FolderRepository
+    abstract fun bindFolderRepository(impl: RoomFolderRepository): FolderRepository
 
     @Binds
     @Singleton

@@ -12,7 +12,6 @@ import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
-import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.util.RelativeTimeFormatter
@@ -35,7 +34,6 @@ import javax.inject.Inject
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val savedPostRepository: SavedPostRepository,
     private val placeRepository: PlaceRepository,
     private val folderRepository: FolderRepository,
     private val locationRepository: LocationRepository,
@@ -130,13 +128,20 @@ class HomeViewModel @Inject constructor(
             ViewState(selectedId, location, pickerFor, showCreateFolder, folderAssign)
         }
 
-    val uiState: StateFlow<HomeUiState> = combine(
+    // 저장소에서 오는 세 가지(장소, 폴더, 장소별 게시물)를 한 묶음으로 받는다. 화면 상태가 바뀔 때마다 장소별로 게시물을
+    // 다시 조회하지 않고, 저장소가 한 번에 묶어 준 값을 메모리에서 쓴다(Firestore에선 조회마다 읽기 비용이 든다).
+    private val storedData: Flow<StoredData> = combine(
         placeRepository.observeAll(),
-        searchQuery,
         folderRepository.observeAll(),
+        placeRepository.observePostsByPlace(),
+    ) { places, folders, postsByPlace -> StoredData(places, folders, postsByPlace) }
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        storedData,
+        searchQuery,
         folderFilter,
         viewState,
-    ) { places, query, folders, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign) ->
+    ) { (places, folders, postsByPlace), query, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign) ->
         val folderFiltered = when (filter) {
             FolderFilter.All -> places
             FolderFilter.Unclassified -> places.filter { it.folderId == null }
@@ -153,10 +158,7 @@ class HomeViewModel @Inject constructor(
             }
         }
         val foldersById = folders.associateBy { it.id }
-        val placesWithPosts = visiblePlaces.map { place ->
-            val postIds = placeRepository.postIdsForPlace(place.id)
-            place to savedPostRepository.findByIds(postIds)
-        }
+        val placesWithPosts = visiblePlaces.map { place -> place to postsByPlace[place.id].orEmpty() }
         val selectedPosts = placesWithPosts
             .firstOrNull { (place, _) -> place.id == selectedPlaceId }
             ?.second.orEmpty()
@@ -350,6 +352,12 @@ class HomeViewModel @Inject constructor(
         }
     }
 }
+
+private data class StoredData(
+    val places: List<Place>,
+    val folders: List<Folder>,
+    val postsByPlace: Map<String, List<SavedPost>>,
+)
 
 private data class FolderAssignState(
     val placeId: String?,

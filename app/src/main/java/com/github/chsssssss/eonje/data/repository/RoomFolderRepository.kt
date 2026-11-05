@@ -8,17 +8,20 @@ import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 
-class FolderRepositoryImpl @Inject constructor(
+class RoomFolderRepository @Inject constructor(
     private val folderDao: FolderDao,
     private val placeDao: PlaceDao,
     private val placesChangedNotifier: PlacesChangedNotifier,
 ) : FolderRepository {
 
     override fun observeAll(): Flow<List<Folder>> = folderDao.observeAll().map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun loadCachedAll(): List<Folder> = folderDao.observeAll().first().map { it.toDomain() }
 
     override suspend fun findOrCreateByName(name: String): Folder {
         val trimmed = name.trim()

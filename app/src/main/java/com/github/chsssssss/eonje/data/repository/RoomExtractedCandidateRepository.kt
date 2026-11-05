@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-class ExtractedCandidateRepositoryImpl @Inject constructor(
+class RoomExtractedCandidateRepository @Inject constructor(
     private val dao: ExtractedCandidateDao,
 ) : ExtractedCandidateRepository {
     override fun observeForPost(postId: String): Flow<List<ExtractedCandidate>> =

@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.Flow
 interface FolderRepository {
     fun observeAll(): Flow<List<Folder>>
 
+    /** 로컬 데이터에 있는 폴더 전부. 서버를 읽지 않는다 — 위젯용(비어 있으면 빈 목록). */
+    suspend fun loadCachedAll(): List<Folder>
+
     /** Reuses an existing folder by name rather than creating a duplicate. */
     suspend fun findOrCreateByName(name: String): Folder
 

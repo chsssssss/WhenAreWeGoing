@@ -202,11 +202,22 @@ class ThumbnailMaintenanceTest {
     }
 
     @Test
+    fun `로컬 데이터가 비어 있으면 파일 이름으로 고아를 판단하지 않는다`() = runBlocking {
+        file("a.jpg", 10)
+        file("old.jpg.tmp", 10).setLastModified(now - ThumbnailPolicy.STALE_TMP_MILLIS - 1)
+
+        val report = maintenance(emptyList(), FakeState(done = true)).run(now)
+
+        assertEquals("게시물이 없는 게 아니라 아직 로컬에 못 올라온 걸 수 있어 썸네일은 지우지 않는다", listOf("a.jpg"), dir.list()!!.toList())
+        assertEquals("오래된 tmp만 정리한다", 1, report.orphansDeleted)
+    }
+
+    @Test
     fun `고아 파일은 줄이지 않고 지운다`() = runBlocking {
         file("orphan.jpg", 400 * 1024)
         val codec = codec { ImageBounds(1080, 1350) }
 
-        val report = maintenance(emptyList(), FakeState(), codec).run(now)
+        val report = maintenance(listOf(post("other")), FakeState(), codec).run(now)
 
         assertEquals(0, codec.downscaleCalls)
         assertEquals(1, report.orphansDeleted)
@@ -281,6 +292,10 @@ private class FakePosts(
     val deletedIds = mutableListOf<String>()
 
     override fun observeAll(): Flow<List<SavedPost>> = flowOf(all)
+
+    override suspend fun cachedPostIds(): Set<String> = all.mapTo(HashSet()) { it.id }
+
+    override suspend fun loadCachedUnresolved(): List<SavedPost> = emptyList()
 
     override suspend fun clearLocalThumbnail(id: String) {
         if (id == failClearFor) throw IllegalStateException("DB 오류")

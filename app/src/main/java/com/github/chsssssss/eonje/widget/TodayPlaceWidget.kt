@@ -42,7 +42,6 @@ import com.github.chsssssss.eonje.R
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.ui.theme.eonjeColorScheme
 import dagger.hilt.android.EntryPointAccessors
-import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
 /** 위젯에 그릴 값만 추린 것 — 도메인 Place를 그대로 넘기지 않는다. */
@@ -79,7 +78,8 @@ class TodayPlaceWidget : GlanceAppWidget() {
 
     private suspend fun loadTodayPlace(context: Context): TodayPlace? {
         val entryPoint = EntryPointAccessors.fromApplication(context, TodayPlaceWidgetEntryPoint::class.java)
-        val candidates = entryPoint.placeRepository().observeAll().first()
+        // 위젯은 서버를 읽지 않는다 — 로컬 데이터가 비어 있으면 빈 상태로 그린다.
+        val candidates = entryPoint.placeRepository().loadCachedAll()
             .filter { it.status == ResolveStatus.RESOLVED && !it.name.isNullOrBlank() }
         val pick = TodayPickStore.resolve(
             context = context,
@@ -88,7 +88,7 @@ class TodayPlaceWidget : GlanceAppWidget() {
         ) ?: return null
         val place = candidates.first { it.id == pick.placeId }
         val folder = place.folderId?.let { folderId ->
-            entryPoint.folderRepository().observeAll().first().firstOrNull { it.id == folderId }
+            entryPoint.folderRepository().loadCachedAll().firstOrNull { it.id == folderId }
         }
         return TodayPlace(
             id = place.id,

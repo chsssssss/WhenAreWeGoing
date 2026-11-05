@@ -10,7 +10,7 @@ import android.graphics.Shader
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.github.chsssssss.eonje.data.repository.SavedPostRepositoryImpl
+import com.github.chsssssss.eonje.data.repository.RoomSavedPostRepository
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -38,7 +38,7 @@ class ThumbnailMaintenanceInstrumentedTest {
     private lateinit var database: EonjeDatabase
     private lateinit var maintenance: ThumbnailMaintenance
     private lateinit var state: MemoryState
-    private lateinit var repository: SavedPostRepositoryImpl
+    private lateinit var repository: RoomSavedPostRepository
 
     private class MemoryState : ThumbnailMaintenanceState {
         var done = false
@@ -54,7 +54,7 @@ class ThumbnailMaintenanceInstrumentedTest {
         dir = File(context.cacheDir, "maintenance-test-${System.nanoTime()}").apply { mkdirs() }
         database = Room.inMemoryDatabaseBuilder(context, EonjeDatabase::class.java).allowMainThreadQueries().build()
         val store = ThumbnailStore(dir, OkHttpClient(), AndroidImageCodec)
-        repository = SavedPostRepositoryImpl(database.savedPostDao(), store)
+        repository = RoomSavedPostRepository(database.savedPostDao(), store)
         state = MemoryState()
         maintenance = ThumbnailMaintenance(store, repository, state)
     }

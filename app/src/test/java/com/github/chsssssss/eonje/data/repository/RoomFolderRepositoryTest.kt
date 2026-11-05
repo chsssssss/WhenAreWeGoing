@@ -17,12 +17,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 폴더 저장소의 동작(이름 재사용, 외형 갱신, 삭제 시 미분류 처리)이 도메인 모델 전환 뒤에도 그대로인지 확인한다. */
-class FolderRepositoryImplTest {
+class RoomFolderRepositoryTest {
 
     private val folderDao = FakeFolderDao()
     private val placeDao = FakePlaceDao()
     private var notified = 0
-    private val repository = FolderRepositoryImpl(folderDao, placeDao, placesChangedNotifier = { notified++ })
+    private val repository = RoomFolderRepository(folderDao, placeDao, placesChangedNotifier = { notified++ })
 
     @Test
     fun `findOrCreateByName은 공백을 정리하고 같은 이름이면 기존 폴더를 돌려준다`() = runBlocking {

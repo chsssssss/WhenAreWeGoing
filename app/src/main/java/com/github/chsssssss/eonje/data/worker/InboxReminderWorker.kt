@@ -10,7 +10,6 @@ import com.github.chsssssss.eonje.domain.notification.InboxReminderNotifier
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /** 4단계(다듬기): 정리되지 않은 게시물이 쌓여 있으면 주기적으로 상기시킨다. */
@@ -23,7 +22,8 @@ class InboxReminderWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        val count = savedPostRepository.observeUnresolved().first().size
+        // 백그라운드 작업이라 서버를 읽지 않는다 — 로컬 데이터가 비어 있으면 알림을 보내지 않는다.
+        val count = savedPostRepository.loadCachedUnresolved().size
         if (count > 0) {
             notifier.notifyPending(count)
         }

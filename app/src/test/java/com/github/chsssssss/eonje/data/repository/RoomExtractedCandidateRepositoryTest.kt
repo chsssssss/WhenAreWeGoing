@@ -13,10 +13,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** replaceForPost는 기존 후보를 지우고 새로 넣으며, 빈 목록이면 지우기만 한다(동작은 도메인 전환 전과 같다). */
-class ExtractedCandidateRepositoryImplTest {
+class RoomExtractedCandidateRepositoryTest {
 
     private val dao = FakeDao()
-    private val repository = ExtractedCandidateRepositoryImpl(dao)
+    private val repository = RoomExtractedCandidateRepository(dao)
 
     @Test
     fun `후보를 저장하고 게시물 단위로 순서대로 읽는다`() = runBlocking {

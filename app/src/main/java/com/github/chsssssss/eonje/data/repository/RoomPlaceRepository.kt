@@ -3,18 +3,22 @@ package com.github.chsssssss.eonje.data.repository
 import com.github.chsssssss.eonje.data.local.PlaceDao
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRef
 import com.github.chsssssss.eonje.data.local.PostPlaceCrossRefDao
+import com.github.chsssssss.eonje.data.local.SavedPostDao
 import com.github.chsssssss.eonje.data.mapper.toDomain
 import com.github.chsssssss.eonje.data.mapper.toEntity
 import com.github.chsssssss.eonje.domain.model.Place
+import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-class PlaceRepositoryImpl @Inject constructor(
+class RoomPlaceRepository @Inject constructor(
     private val placeDao: PlaceDao,
     private val crossRefDao: PostPlaceCrossRefDao,
+    private val savedPostDao: SavedPostDao,
     private val placesChangedNotifier: PlacesChangedNotifier,
 ) : PlaceRepository {
 
@@ -42,6 +46,16 @@ class PlaceRepositoryImpl @Inject constructor(
         crossRefDao.postIdsForPlace(placeId)
 
     override fun observeAll(): Flow<List<Place>> = placeDao.observeAll().map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun loadCachedAll(): List<Place> = placeDao.observeAll().first().map { it.toDomain() }
+
+    // Room 구현은 이관(읽기)용이라 효율보다 단순함을 택했다 — 장소마다 연결된 게시물을 읽어 묶는다.
+    override fun observePostsByPlace(): Flow<Map<String, List<SavedPost>>> =
+        placeDao.observeAll().map { places ->
+            places.associate { place ->
+                place.id to savedPostDao.findByIds(crossRefDao.postIdsForPlace(place.id)).map { it.toDomain() }
+            }
+        }
 
     override suspend fun assignFolder(placeId: String, folderId: String?) {
         placeDao.updateFolder(placeId, folderId)

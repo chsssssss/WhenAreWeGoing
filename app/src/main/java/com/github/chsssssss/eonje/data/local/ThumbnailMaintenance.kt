@@ -75,9 +75,13 @@ class ThumbnailMaintenance @Inject constructor(
         // 게시물 행은 파일보다 먼저 생기므로, 목록에 있는 파일의 게시물은 항상 이후 읽기에 들어 있다.
         // 반대로 하면 그 사이에 새로 저장된 게시물의 파일을 고아로 잘못 지울 수 있다.
         val files = store.snapshotFiles()
-        val savedPosts = posts.observeAll().first()
+        // 서버를 읽지 않는 로컬 ID만 쓴다(게시물이 늘수록 앱을 열 때마다 읽기 비용이 드는 걸 피한다).
+        val knownIds = posts.cachedPostIds()
 
-        val orphansDeleted = store.deleteOrphans(files, savedPosts.mapTo(HashSet()) { it.id }, nowMillis)
+        // 로컬 데이터가 비어 있으면 "게시물이 없다"와 "아직 로컬에 못 올라왔다"를 구별할 수 없다. 썸네일은 다시 받을 수 없어서
+        // 이때는 파일 이름으로 고아를 판단하지 않고, 오래된 .tmp만 정리한다.
+        val orphanCandidates = if (knownIds.isEmpty()) files.filter { it.name.endsWith(".tmp") } else files
+        val orphansDeleted = store.deleteOrphans(orphanCandidates, knownIds, nowMillis)
         if (state.isCompactionDone()) return@withContext MaintenanceReport(orphansDeleted, null)
 
         val targets = files.filter { it.name.endsWith(JPG_SUFFIX) && it.exists() }

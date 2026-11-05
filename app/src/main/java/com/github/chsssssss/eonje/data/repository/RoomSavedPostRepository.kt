@@ -9,10 +9,11 @@ import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-class SavedPostRepositoryImpl @Inject constructor(
+class RoomSavedPostRepository @Inject constructor(
     private val dao: SavedPostDao,
     private val thumbnailStore: ThumbnailStore,
 ) : SavedPostRepository {
@@ -39,6 +40,10 @@ class SavedPostRepositoryImpl @Inject constructor(
     override suspend fun clearLocalThumbnail(id: String) = dao.clearLocalThumbnail(id)
 
     override fun observeAll(): Flow<List<SavedPost>> = dao.observeAll().map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun cachedPostIds(): Set<String> = dao.observeAll().first().mapTo(HashSet()) { it.id }
+
+    override suspend fun loadCachedUnresolved(): List<SavedPost> = dao.observeUnresolved().first().map { it.toDomain() }
 
     override fun observeUnresolved(): Flow<List<SavedPost>> =
         dao.observeUnresolved().map { rows -> rows.map { it.toDomain() } }
