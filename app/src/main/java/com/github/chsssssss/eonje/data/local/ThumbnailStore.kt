@@ -81,6 +81,15 @@ class ThumbnailStore internal constructor(
         }
     }
 
+    /**
+     * 이 기기에 [key]의 썸네일 파일이 있으면 file:// 경로, 없으면 null.
+     * Firestore에는 썸네일 경로를 저장하지 않으므로(기기마다 다름) 게시물을 읽을 때 이걸로 채운다.
+     */
+    fun existingUrl(key: String): String? {
+        val file = File(dir, "$key.jpg")
+        return if (file.isFile && file.length() > 0) "file://${file.absolutePath}" else null
+    }
+
     /** 게시물 삭제 시 같이 정리한다 — 안 만들어졌어도(다운로드 실패) 조용히 넘어간다. */
     fun deleteAll(keys: List<String>) {
         keys.forEach { File(dir, "$it.jpg").delete() }

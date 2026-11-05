@@ -4,6 +4,7 @@ import androidx.work.WorkManager
 import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
+import com.github.chsssssss.eonje.domain.repository.NotSignedInException
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.util.InstagramUrlParser
 import kotlinx.coroutines.sync.Mutex
@@ -15,6 +16,9 @@ sealed interface SaveSharedPostResult {
     data object Saved : SaveSharedPostResult
     data object AlreadySaved : SaveSharedPostResult
     data object NoUrlFound : SaveSharedPostResult
+
+    /** 저장소가 아직 준비되지 않았다(설치 직후 오프라인이라 로그인 전). 저장하지 않았으니 사용자가 다시 공유해야 한다. */
+    data object NotReady : SaveSharedPostResult
 }
 
 class SaveSharedPostUseCase @Inject constructor(
@@ -34,18 +38,23 @@ class SaveSharedPostUseCase @Inject constructor(
             }
 
             val postId = UUID.randomUUID().toString()
-            repository.save(
-                SavedPost(
-                    id = postId,
-                    shortcode = postUrl.shortcode,
-                    instagramUrl = postUrl.canonicalUrl,
-                    caption = null,
-                    thumbnailUrl = null,
-                    status = ResolveStatus.PENDING,
-                    extractedCount = 0,
-                    createdAt = System.currentTimeMillis()
+            try {
+                repository.save(
+                    SavedPost(
+                        id = postId,
+                        shortcode = postUrl.shortcode,
+                        instagramUrl = postUrl.canonicalUrl,
+                        caption = null,
+                        thumbnailUrl = null,
+                        status = ResolveStatus.PENDING,
+                        extractedCount = 0,
+                        createdAt = System.currentTimeMillis()
+                    )
                 )
-            )
+            } catch (e: NotSignedInException) {
+                // 아직 로그인 전이라 저장하지 못했다. 크래시나 조용한 유실 대신 사용자에게 알린다.
+                return@withLock SaveSharedPostResult.NotReady
+            }
 
             // F2로 위임: 실패해도 저장 자체는 이미 끝났다.
             workManager.enqueue(CaptionParsingWorker.request(postId))

@@ -62,6 +62,7 @@ class ShareReceiverActivity : ComponentActivity() {
             SaveSharedPostResult.Saved -> "저장됨"
             SaveSharedPostResult.AlreadySaved -> "이미 저장된 게시물이에요"
             SaveSharedPostResult.NoUrlFound -> "인스타그램 게시물 링크를 찾을 수 없어요"
+            SaveSharedPostResult.NotReady -> "아직 준비 중이에요. 잠시 후 다시 공유해 주세요"
         }
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }

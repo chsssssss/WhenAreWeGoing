@@ -1,5 +1,8 @@
 package com.github.chsssssss.eonje
 
+import dagger.hilt.android.EntryPointAccessors
+import com.github.chsssssss.eonje.di.AuthSessionEntryPoint
+import com.github.chsssssss.eonje.data.firestore.FirestoreSetup
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
@@ -32,6 +35,7 @@ class EonjeApplication : Application(), Configuration.Provider {
         KakaoMapSdk.init(this, BuildConfig.KAKAO_NATIVE_APP_KEY)
         initGeminiFirebaseApp()
         initWherewegoingFirebaseApp()
+        initFirestoreAndAuth()
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             InboxReminderWorker.WORK_NAME,
@@ -87,6 +91,16 @@ class EonjeApplication : Application(), Configuration.Provider {
                 WHEREWEGOING_FIREBASE_APP_NAME,
             )
         installAppCheck(FirebaseAppCheck.getInstance(app))
+    }
+
+    /**
+     * 데이터 원본(Firestore)과 익명 로그인. 반드시 named 앱 "wherewegoing"(Blaze)에 붙인다 — default 앱은 Gemini 전용(Spark)이다.
+     * Firestore 설정은 첫 사용 전에 지정해야 하므로 Firebase 앱을 만든 직후, 어떤 저장소도 만들어지기 전에 여기서 한다.
+     */
+    private fun initFirestoreAndAuth() {
+        val app = FirebaseApp.getApps(this).firstOrNull { it.name == WHEREWEGOING_FIREBASE_APP_NAME } ?: return
+        FirestoreSetup.configure(app)
+        EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).authSession().startAnonymousSignIn()
     }
 
     /**
