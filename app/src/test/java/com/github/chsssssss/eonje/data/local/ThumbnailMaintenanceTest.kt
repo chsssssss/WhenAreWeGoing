@@ -55,14 +55,83 @@ class ThumbnailMaintenanceTest {
         file("migrated.jpg", 10) // 이미 Firestore로 옮겨진 게시물
         file("notYet.jpg", 10) // 아직 안 옮겨진 게시물 — ID 목록엔 없지만 고아가 아니다. 썸네일은 다시 받을 수 없다
         file("old.jpg.tmp", 10).setLastModified(now - ThumbnailPolicy.STALE_TMP_MILLIS - 1)
-        val maintenance = maintenance(
-            FakePosts(listOf(post("migrated"))), FakeState(done = true), legacy = FakeLegacy(complete = false),
-        )
+        val posts = FakePosts(listOf(post("migrated")))
+        val maintenance = maintenance(posts, FakeState(done = true), legacy = FakeLegacy(complete = false))
 
         val report = maintenance.run(now)
 
+        assertTrue("이전이 끝나기 전엔 서버 확인도 하지 않는다", posts.serverChecks.isEmpty())
         assertEquals(listOf("migrated.jpg", "notYet.jpg"), dir.list()!!.sorted())
         assertEquals("오래된 tmp만 지운다", 1, report.orphansDeleted)
+    }
+
+    // ── 서버 확인: 캐시 기준 의심 파일은 서버에도 없을 때만 지운다 ──
+
+    @Test
+    fun `캐시에는 없지만 서버에 있는 게시물의 파일은 지우지 않는다`() = runBlocking {
+        file("cached.jpg", 10)
+        file("evicted.jpg", 10) // 캐시 정리로 빠졌을 뿐 서버에 있는 게시물 — 썸네일은 복구할 수 없다
+        file("gone.jpg", 10) // 서버에도 없다
+        val posts = FakePosts(listOf(post("cached")), serverOnlyIds = setOf("evicted"))
+
+        val report = maintenance(posts, FakeState(done = true)).run(now)
+
+        assertEquals(listOf("cached.jpg", "evicted.jpg"), dir.list()!!.sorted())
+        assertEquals(1, report.orphansDeleted)
+        assertEquals("의심 파일 둘만 서버에 묻는다", listOf(listOf("evicted", "gone")), posts.serverChecks)
+    }
+
+    @Test
+    fun `서버에도 없다고 확인된 파일만 지운다`() = runBlocking {
+        file("a.jpg", 10)
+        file("x.jpg", 10)
+        file("y.png", 10)
+        val posts = FakePosts(listOf(post("a")))
+
+        val report = maintenance(posts, FakeState(done = true)).run(now)
+
+        assertEquals(listOf("a.jpg"), dir.list()!!.toList())
+        assertEquals(2, report.orphansDeleted)
+    }
+
+    @Test
+    fun `오프라인이거나 서버 확인에 실패하면 의심 파일을 지우지 않는다`() = runBlocking {
+        file("a.jpg", 10)
+        file("x.jpg", 10)
+        file("old.jpg.tmp", 10).setLastModified(now - ThumbnailPolicy.STALE_TMP_MILLIS - 1)
+        val posts = FakePosts(listOf(post("a")), offline = true)
+
+        val report = maintenance(posts, FakeState(done = true)).run(now)
+
+        assertEquals("x.jpg는 다음 기회로 미룬다", listOf("a.jpg", "x.jpg"), dir.list()!!.sorted())
+        assertEquals("서버와 무관한 오래된 tmp는 그대로 정리", 1, report.orphansDeleted)
+        assertEquals(1, posts.serverChecks.size)
+    }
+
+    @Test
+    fun `의심 파일이 없으면 서버를 부르지 않는다`() = runBlocking {
+        file("a.jpg", 10)
+        file("b.jpg", 10)
+        val posts = FakePosts(listOf(post("a"), post("b")))
+
+        maintenance(posts, FakeState(done = true)).run(now)
+
+        assertTrue("서버 읽기가 0이어야 한다", posts.serverChecks.isEmpty())
+        assertEquals(listOf("a.jpg", "b.jpg"), dir.list()!!.sorted())
+    }
+
+    @Test
+    fun `한 번에 확인하는 의심 파일에는 상한이 있고 나머지는 지키고 다음에 본다`() = runBlocking {
+        file("keep.jpg", 10)
+        val suspects = (1..75).map { "s%03d".format(it) }
+        suspects.forEach { file("$it.jpg", 10) }
+        val posts = FakePosts(listOf(post("keep")))
+
+        val report = maintenance(posts, FakeState(done = true)).run(now)
+
+        assertEquals("상한 60개만 서버에 묻는다", listOf(suspects.take(60)), posts.serverChecks)
+        assertEquals(60, report.orphansDeleted)
+        assertEquals("확인하지 못한 15개는 남는다", suspects.drop(60).map { "$it.jpg" }, dir.list()!!.sorted().filter { it != "keep.jpg" })
     }
 
     @Test
@@ -319,11 +388,26 @@ private class FakeState(var done: Boolean = false) : ThumbnailMaintenanceState {
 }
 
 private class FakePosts(
+    /** 캐시에 있는 게시물(서버에도 있다). */
     val all: List<SavedPost>,
     private val failClearFor: String? = null,
+    /** 캐시엔 없지만 서버엔 있는 게시물 id(캐시 정리·부분 동기화로 빠진 경우). */
+    private val serverOnlyIds: Set<String> = emptySet(),
+    /** 오프라인이면 서버가 대답하지 못한다. */
+    private val offline: Boolean = false,
 ) : SavedPostRepository {
     val clearedIds = mutableListOf<String>()
     val deletedIds = mutableListOf<String>()
+
+    /** 서버 확인으로 넘어온 id 목록(호출마다 하나). */
+    val serverChecks = mutableListOf<List<String>>()
+
+    override suspend fun findIdsAbsentOnServer(ids: Collection<String>): Set<String> {
+        serverChecks += ids.toList()
+        if (offline) return emptySet() // 대답을 못 받았으니 "없다고 확인된" 것이 없다
+        val onServer = all.mapTo(HashSet()) { it.id } + serverOnlyIds
+        return ids.filterNotTo(HashSet()) { it in onServer }
+    }
 
     override fun observeAll(): Flow<List<SavedPost>> = flowOf(all)
 

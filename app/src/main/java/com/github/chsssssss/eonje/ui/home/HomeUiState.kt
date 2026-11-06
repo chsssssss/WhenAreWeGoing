@@ -1,6 +1,7 @@
 package com.github.chsssssss.eonje.ui.home
 
 import com.github.chsssssss.eonje.domain.model.Folder
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationPhase
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.domain.model.GeoPoint
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
@@ -47,6 +48,10 @@ data class HomeUiState(
     val folderAssignSelectedFolderId: String? = null,
     /** 필터·검색과 무관하게 저장된 장소가 하나도 없는지 — 빈 상태 안내 카드용. 로딩 중 깜빡이지 않게 기본값은 false. */
     val hasNoSavedPlaces: Boolean = false,
+    /** Room → Firestore 이전 상태. 이전 대상이 없으면 NOT_NEEDED라 화면에 아무 영향이 없다. */
+    val migrationPhase: LegacyMigrationPhase = LegacyMigrationPhase.NOT_NEEDED,
+    /** 1.5초 이상 이어질 때만 채워지는 안내 배너(깜빡임 방지). */
+    val migrationBanner: MigrationBanner? = null,
 ) {
     /** 선택된 장소 — 바텀시트가 목록 모드인지 상세 모드인지도 이 값의 null 여부로 결정된다. */
     val highlighted: HomePlace? get() = places.firstOrNull { it.id == selectedPlaceId }

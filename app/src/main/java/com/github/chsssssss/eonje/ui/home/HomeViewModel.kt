@@ -10,6 +10,8 @@ import com.github.chsssssss.eonje.domain.model.Place
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationPhase
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.repository.LocationRepository
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
@@ -21,11 +23,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -38,7 +42,15 @@ class HomeViewModel @Inject constructor(
     private val folderRepository: FolderRepository,
     private val locationRepository: LocationRepository,
     private val kakaoLocalRepository: KakaoLocalRepository,
+    legacyMigration: LegacyMigrationStatus,
 ) : ViewModel() {
+
+    // 이전 상태는 시작값 없이 첫 값이 올 때까지 기다린다 — 시작값이 있으면 이전 대상이 있는 사용자가 잠깐 빈 상태 카드를 본다.
+    private val migrationPhase: Flow<LegacyMigrationPhase> = legacyMigration.observePhase()
+        .catch { emit(LegacyMigrationPhase.NOT_NEEDED) }
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
+    private val migrationUi: Flow<MigrationUi> =
+        combine(migrationPhase, migrationBannerFlow(migrationPhase)) { phase, banner -> MigrationUi(phase, banner) }
 
     private val searchQuery = MutableStateFlow("")
     private val selectedPlaceId = MutableStateFlow<String?>(null)
@@ -141,7 +153,8 @@ class HomeViewModel @Inject constructor(
         searchQuery,
         folderFilter,
         viewState,
-    ) { (places, folders, postsByPlace), query, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign) ->
+        migrationUi,
+    ) { (places, folders, postsByPlace), query, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign), migration ->
         val folderFiltered = when (filter) {
             FolderFilter.All -> places
             FolderFilter.Unclassified -> places.filter { it.folderId == null }
@@ -178,7 +191,9 @@ class HomeViewModel @Inject constructor(
             showCreateFolderSheet = showCreateFolder,
             folderAssignForPlaceId = folderAssign.placeId,
             folderAssignSelectedFolderId = folderAssign.selectedFolderId,
-            hasNoSavedPlaces = places.isEmpty(),
+            hasNoSavedPlaces = hasNoSavedPlaces(places.isEmpty(), migration.phase),
+            migrationPhase = migration.phase,
+            migrationBanner = migration.banner,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -352,6 +367,8 @@ class HomeViewModel @Inject constructor(
         }
     }
 }
+
+private data class MigrationUi(val phase: LegacyMigrationPhase, val banner: MigrationBanner?)
 
 private data class StoredData(
     val places: List<Place>,

@@ -466,6 +466,62 @@ class FirestoreRepositoriesTest {
         }
     }
 
+    // ── 썸네일 고아 정리의 서버 확인 ──
+
+    @Test
+    fun 서버_확인은_서버에_없다고_확인된_id만_돌려주고_오프라인에서는_아무것도_확인하지_못한다() = runBlocking {
+        posts.save(post("exists-1"))
+        posts.save(post("exists-2"))
+        firestore.waitForPendingWrites().await()
+
+        assertEquals(
+            setOf("missing-1", "missing-2"),
+            posts.findIdsAbsentOnServer(listOf("exists-1", "missing-1", "exists-2", "missing-2")),
+        )
+        // whereIn은 30개까지라 그보다 많으면 쪼개서 묻는다.
+        val many = (1..65).map { "m-$it" } + "exists-1"
+        assertEquals((1..65).map { "m-$it" }.toSet(), posts.findIdsAbsentOnServer(many))
+
+        firestore.disableNetwork().await()
+        assertEquals("서버가 대답하지 못하면 없다고 확인된 게 아니다", emptySet<String>(), posts.findIdsAbsentOnServer(listOf("exists-1", "missing-1")))
+        assertEquals(emptySet<String>(), posts.findIdsAbsentOnServer(emptyList()))
+    }
+
+    @Test
+    fun 썸네일_정리는_캐시에_없어도_서버에_있으면_지키고_서버에도_없을_때만_지우며_오프라인에선_지우지_않는다() = runBlocking {
+        // 캐시엔 이 게시물만 있다.
+        posts.save(post("cached"))
+        firestore.waitForPendingWrites().await()
+        // 서버에만 있는 게시물(캐시 정리·부분 동기화로 캐시에서 빠진 경우를 REST로 흉내낸다).
+        createServerOnlyPost("server-only")
+        assertFalse("캐시에는 없어야 한다", "server-only" in posts.cachedPostIds())
+
+        fun thumb(key: String) = File(dir, "$key.jpg").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(10)) }
+        val maintenance = com.github.chsssssss.eonje.data.local.ThumbnailMaintenance(
+            thumbnails, posts,
+            object : com.github.chsssssss.eonje.data.local.ThumbnailMaintenanceState {
+                override suspend fun isCompactionDone() = true
+                override suspend fun markCompactionDone() = Unit
+            },
+            object : com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus {
+                override suspend fun isComplete() = true
+                override suspend fun isLegacyDuplicate(shortcode: String) = false
+            },
+        )
+
+        // 오프라인: 서버가 대답하지 못하므로 의심 파일은 하나도 지우지 않는다.
+        val gone = thumb("gone"); val serverOnly = thumb("server-only"); val cached = thumb("cached")
+        firestore.disableNetwork().await()
+        maintenance.run(System.currentTimeMillis())
+        assertTrue("오프라인에선 지우지 않는다", gone.exists() && serverOnly.exists() && cached.exists())
+
+        // 온라인: 서버에도 없는 것만 지운다.
+        firestore.enableNetwork().await()
+        maintenance.run(System.currentTimeMillis())
+        assertFalse("서버에도 없는 파일은 지운다", gone.exists())
+        assertTrue("서버에 있는 게시물의 파일은 캐시에 없어도 지키고, 캐시에 있는 것도 그대로", serverOnly.exists() && cached.exists())
+    }
+
     // ── 도구 ──
 
     private suspend fun awaitPlaces(timeoutMillis: Long = TIMEOUT, condition: (List<Place>) -> Boolean): List<Place> =
@@ -531,6 +587,24 @@ class FirestoreRepositoriesTest {
         connection.setRequestProperty("Authorization", "Bearer owner")
         return try {
             if (connection.responseCode == 404) null else JSONObject(connection.inputStream.bufferedReader().readText())
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** REST로 게시물 문서를 서버에만 만든다(로컬 캐시를 거치지 않는다). */
+    private fun createServerOnlyPost(id: String) {
+        val url = URL("http://$HOST:$FIRESTORE_PORT/v1/projects/$PROJECT/databases/(default)/documents/users/$uid/posts?documentId=$id")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer owner")
+        connection.setRequestProperty("Content-Type", "application/json")
+        try {
+            connection.outputStream.use {
+                it.write("""{"fields":{"instagramUrl":{"stringValue":"https://www.instagram.com/p/$id/"},"status":{"stringValue":"RESOLVED"}}}""".toByteArray())
+            }
+            check(connection.responseCode in 200..299) { "서버 문서 만들기 실패: ${connection.responseCode}" }
         } finally {
             connection.disconnect()
         }

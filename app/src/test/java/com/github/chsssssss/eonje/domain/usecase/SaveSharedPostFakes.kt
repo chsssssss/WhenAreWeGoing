@@ -20,6 +20,8 @@ class FakeUserSession(
 
     override fun isSignedIn() = signedIn
     override fun currentUid(): String? = if (signedIn) "uid" else null
+    override val uid: kotlinx.coroutines.flow.StateFlow<String?>
+        get() = kotlinx.coroutines.flow.MutableStateFlow(currentUid())
 
     override suspend fun signInIfNeeded(): Boolean {
         if (signedIn) return true
@@ -46,6 +48,7 @@ class FakeSavedPostRepository(private val session: FakeUserSession) : SavedPostR
     override suspend fun clearLocalThumbnail(id: String) = TODO()
     override fun observeAll(): Flow<List<SavedPost>> = emptyFlow()
     override suspend fun cachedPostIds(): Set<String> = TODO()
+    override suspend fun findIdsAbsentOnServer(ids: Collection<String>): Set<String> = TODO()
     override suspend fun loadCachedUnresolved(): List<SavedPost> = TODO()
     override fun observeUnresolved(): Flow<List<SavedPost>> = emptyFlow()
 }

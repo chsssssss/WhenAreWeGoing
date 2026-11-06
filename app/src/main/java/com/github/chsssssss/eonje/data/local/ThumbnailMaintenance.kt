@@ -87,7 +87,19 @@ class ThumbnailMaintenance @Inject constructor(
         // 썸네일(다시 받을 수 없다)을 잃는다. 이전이 끝난 뒤에만 고아를 판단한다.
         val canJudgeOrphans = knownIds.isNotEmpty() && legacyMigration.isComplete()
         val orphanCandidates = if (canJudgeOrphans) files else files.filter { it.name.endsWith(".tmp") }
-        val orphansDeleted = store.deleteOrphans(orphanCandidates, knownIds, nowMillis)
+
+        // 캐시에 없다고 곧바로 고아는 아니다: Firestore 캐시는 20MB 상한으로 정리(GC)되거나 일부만 채워져 있을 수 있고,
+        // 썸네일은 지우면 복구할 수 없다. 캐시 기준으로 의심되는 파일만 서버에 물어서, **서버에도 없다고 확인된 것만** 지운다.
+        // 서버가 대답하지 않은 것(오프라인·오류)과 한 번에 확인할 수 있는 개수를 넘는 것은 지키고 다음 기회로 미룬다.
+        // 읽기는 의심 파일 수만큼만(최대 MAX_SERVER_CHECKS_PER_RUN개) 들고, 의심 파일이 없으면 0이다.
+        val keysToKeep = if (canJudgeOrphans) {
+            val suspectKeys = files.filter { !it.name.endsWith(".tmp") }.map(store::keyOf).filter { it !in knownIds }.distinct()
+            val confirmedAbsent = if (suspectKeys.isEmpty()) emptySet() else posts.findIdsAbsentOnServer(suspectKeys.take(MAX_SERVER_CHECKS_PER_RUN))
+            suspectKeys.toSet() - confirmedAbsent
+        } else {
+            emptySet()
+        }
+        val orphansDeleted = store.deleteOrphans(orphanCandidates, knownIds + keysToKeep, nowMillis)
         if (state.isCompactionDone()) return@withContext MaintenanceReport(orphansDeleted, null)
 
         val targets = files.filter { it.name.endsWith(JPG_SUFFIX) && it.exists() }
@@ -127,5 +139,8 @@ class ThumbnailMaintenance @Inject constructor(
 
     private companion object {
         const val JPG_SUFFIX = ".jpg"
+
+        /** 한 번에 서버에 확인하는 의심 파일의 상한(whereIn 30개 × 2번). 나머지는 다음 실행에서 본다. */
+        const val MAX_SERVER_CHECKS_PER_RUN = 60
     }
 }

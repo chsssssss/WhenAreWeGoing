@@ -93,6 +93,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.github.chsssssss.eonje.domain.model.Folder
 import com.github.chsssssss.eonje.domain.model.LocationAvailability
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationPhase
 import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.ui.components.AddFolderContent
 import com.github.chsssssss.eonje.ui.components.FilledPillButton
@@ -490,13 +491,16 @@ private fun HomeContent(
         }
 
         // 빈 상태에선 시트가 Full이라 지도 위쪽이 거의 가려지므로 시트보다 위에 그린다.
-        if (locationNotice != null) {
-            LocationNoticeBanner(
-                availability = locationNotice,
-                onPermissionResult = onLocationPermissionResult,
-                onDismiss = onDismissLocationNotice,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
+        // 이전 안내(있을 때만)와 위치 안내를 위에서부터 쌓는다.
+        Column(modifier = Modifier.align(Alignment.TopCenter)) {
+            uiState.migrationBanner?.let { MigrationNoticeBanner(it) }
+            if (locationNotice != null) {
+                LocationNoticeBanner(
+                    availability = locationNotice,
+                    onPermissionResult = onLocationPermissionResult,
+                    onDismiss = onDismissLocationNotice,
+                )
+            }
         }
     }
 }
@@ -739,6 +743,7 @@ private fun PlaceListSheetContent(
                 places = uiState.places,
                 isSearching = uiState.searchQuery.isNotBlank(),
                 hasNoSavedPlaces = uiState.hasNoSavedPlaces,
+                migrationActive = uiState.migrationPhase != LegacyMigrationPhase.NOT_NEEDED,
                 onPlaceClick = onPlaceClick,
                 onOpenFolderPicker = onOpenFolderPicker,
                 onOpenGuide = onOpenGuide,
@@ -842,15 +847,22 @@ private fun PlaceCardList(
     places: List<HomePlace>,
     isSearching: Boolean,
     hasNoSavedPlaces: Boolean,
+    migrationActive: Boolean,
     onPlaceClick: (String) -> Unit,
     onOpenFolderPicker: (String) -> Unit,
     onOpenGuide: () -> Unit,
 ) {
-    if (hasNoSavedPlaces) {
+    val content = placeListContent(hasNoSavedPlaces, places.isEmpty(), migrationActive)
+    if (content == PlaceListContent.GUIDE_CARD) {
         // 시트를 Mid로 내려도 버튼까지 닿을 수 있게 스크롤로 감싼다 — nestedScroll이 남는 드래그는 시트로 넘긴다.
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             EmptyPlacesGuideCard(onOpenGuide = onOpenGuide)
         }
+        return
+    }
+    // 이전 중인데 아직 보여줄 장소가 없다 — 위 배너가 이유를 말해주므로 "저장된 장소가 없어요"를 띄우지 않는다.
+    if (content == PlaceListContent.MIGRATION_PLACEHOLDER) {
+        Box(modifier = Modifier.fillMaxSize())
         return
     }
     if (places.isEmpty()) {

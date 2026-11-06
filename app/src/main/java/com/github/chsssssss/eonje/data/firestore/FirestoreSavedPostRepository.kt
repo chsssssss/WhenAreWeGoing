@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -146,6 +147,26 @@ class FirestoreSavedPostRepository @Inject constructor(
         return readFromCache(firestore.posts(uid))?.documents?.mapTo(HashSet()) { it.id }.orEmpty()
     }
 
+    override suspend fun findIdsAbsentOnServer(ids: Collection<String>): Set<String> {
+        if (ids.isEmpty()) return emptySet()
+        val uid = auth.currentUid() ?: return emptySet() // 로그인 전엔 서버에 물어볼 수 없다 — 아무것도 확인하지 못한 것이다
+        val absent = HashSet<String>()
+        ids.distinct().chunked(WHERE_IN_LIMIT).forEach { chunk ->
+            val snapshot = try {
+                withTimeoutOrNull(SERVER_CHECK_TIMEOUT_MILLIS) {
+                    firestore.posts(uid).whereIn(FieldPath.documentId(), chunk).get(Source.SERVER).await()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null // 오프라인·서버 오류: 이 묶음은 확인하지 못했다 → 결과에 넣지 않는다
+            } ?: return@forEach
+            val found = snapshot.documents.mapTo(HashSet()) { it.id }
+            chunk.filterNotTo(absent) { it in found }
+        }
+        return absent
+    }
+
     override suspend fun loadCachedUnresolved(): List<SavedPost> {
         val uid = auth.currentUid() ?: return emptyList()
         return readFromCache(unresolvedQuery(uid))?.toPostsNewestFirst().orEmpty()
@@ -170,6 +191,7 @@ class FirestoreSavedPostRepository @Inject constructor(
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
         const val UID_WAIT_TIMEOUT_MILLIS = 2_000L
+        const val SERVER_CHECK_TIMEOUT_MILLIS = 10_000L
 
         /** whereIn은 값을 30개까지만 받는다. */
         const val WHERE_IN_LIMIT = 30

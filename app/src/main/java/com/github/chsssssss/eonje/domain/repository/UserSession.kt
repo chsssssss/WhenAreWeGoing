@@ -1,9 +1,14 @@
 package com.github.chsssssss.eonje.domain.repository
 
+import kotlinx.coroutines.flow.StateFlow
+
 /** 저장소를 쓰려면 필요한 익명 로그인 세션. 설치 직후 오프라인이면 아직 로그인 전일 수 있다. */
 interface UserSession {
     /** 기다리지 않고 지금 로그인돼 있는지만 본다(메인 스레드에서 불러도 안전). */
     fun isSignedIn(): Boolean
+
+    /** 지금 로그인된 uid의 흐름. 로그인 전이면 null. */
+    val uid: StateFlow<String?>
 
     /** 지금 로그인된 uid. 기다리지 않는다. 로그인 전이면 null. */
     fun currentUid(): String?

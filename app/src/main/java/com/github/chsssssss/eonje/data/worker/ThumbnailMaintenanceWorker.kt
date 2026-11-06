@@ -18,7 +18,9 @@ import kotlinx.coroutines.CancellationException
 
 /**
  * 앱을 열 때마다 한 번씩 도는 썸네일 폴더 정리(고아 파일 삭제) + 업데이트 후 1회만 하는 기존 파일 줄이기.
- * 저장 파이프라인과 무관한 백그라운드 작업이고, 네트워크는 쓰지 않는다. 실패해도 앱 동작에는 영향이 없다.
+ * 저장 파이프라인과 무관한 백그라운드 작업이다. 네트워크는 캐시 기준으로 고아로 의심되는 파일이 있을 때만 쓴다 — 그 게시물이 서버에도
+ * 없는지 Firestore에 물어서(최대 60개, 읽기 비용 있음), 서버에도 없다고 확인된 파일만 지운다(오프라인이면 지우지 않고 미룬다).
+ * 실패해도 앱 동작에는 영향이 없다.
  */
 @HiltWorker
 class ThumbnailMaintenanceWorker @AssistedInject constructor(

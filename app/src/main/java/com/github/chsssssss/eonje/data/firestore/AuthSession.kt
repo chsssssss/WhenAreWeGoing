@@ -40,7 +40,7 @@ class AuthSession @Inject constructor(
     private val signInMutex = Mutex()
 
     /** 지금 로그인된 uid. 로그인 전이면 null. */
-    val uid: StateFlow<String?> = callbackFlow {
+    override val uid: StateFlow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
         auth.addAuthStateListener(listener)
         awaitClose { auth.removeAuthStateListener(listener) }

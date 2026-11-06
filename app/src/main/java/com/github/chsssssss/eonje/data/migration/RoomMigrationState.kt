@@ -12,7 +12,9 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import java.io.IOException
 import javax.inject.Inject
@@ -73,6 +75,11 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .first()
         .toState()
+
+    /** 진행 기록의 변화. 홈 화면이 이전 상태를 보여주는 데 쓴다(읽기만 하며 서버 호출이 아니다). */
+    val states: Flow<MigrationState> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it.toState() }
 
     /** 이 uid로 새로 시작한다. 이전 uid의 진행 기록은 버린다. */
     suspend fun begin(uid: String, nowMillis: Long) {

@@ -43,6 +43,12 @@ class RoomSavedPostRepository @Inject constructor(
 
     override suspend fun cachedPostIds(): Set<String> = dao.observeAll().first().mapTo(HashSet()) { it.id }
 
+    // Room은 로컬이 곧 원본이라 없으면 없는 것이다.
+    override suspend fun findIdsAbsentOnServer(ids: Collection<String>): Set<String> {
+        val existing = dao.findByIds(ids.toList()).mapTo(HashSet()) { it.id }
+        return ids.filterNotTo(HashSet()) { it in existing }
+    }
+
     override suspend fun loadCachedUnresolved(): List<SavedPost> = dao.observeUnresolved().first().map { it.toDomain() }
 
     override fun observeUnresolved(): Flow<List<SavedPost>> =
