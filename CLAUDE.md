@@ -430,8 +430,10 @@ enum class UnresolvedReason {
   - 필드 변환은 Firestore 저장소와 같은 매퍼를 쓴다. memo는 옮기지 않고, 썸네일 파일은 옮기지 않지만 문서 ID가 Room의 UUID 그대로라서 `{postId}.jpg`가 그대로 연결된다(원격 URL만 저장돼 있던 썸네일은 만료되는 값이라 옮기지 않는다)
   - **Room 데이터는 지우지 않는다**(정리는 다음 버전). 서버에 쓰기가 확정되지 않은 상태에서는 어떤 경우에도 지우지 않는다
   - **이전이 끝나기 전에 막아둔 위험 3가지**: ① 썸네일 고아 정리(`ThumbnailMaintenance`)는 이전이 끝난 뒤에만 한다 — 일부만 옮겨진 상태에서 ID 목록에 없다고 지우면 다시 받을 수 없는 썸네일을 잃는다 ② 캡션 작업은 게시물이 없고 이전이 안 끝났으면 횟수 없이 대기한다(`WaitForMigration`) ③ 공유 중복 확인은 이전이 끝나기 전엔 Room도 shortcode로 본다
+  - **홈 안내**: 이전 대상이 있는 사용자(Room에 데이터가 있고 현재 uid로 이전이 안 끝남)에게만 적용된다 — 신규 설치(Room이 비어 있음)엔 영향이 없다. 이전이 끝나기 전엔 "저장된 장소가 없어요"와 빈 상태 카드를 보여주지 않고, 상태가 1.5초 이상 이어질 때만 얇은 배너를 띄운다(이전 중 "기존 데이터를 옮기는 중이에요", 시작 못 함(오프라인·로그인 대기·재시도 대기) "인터넷에 연결되면 기존 데이터를 옮겨요. 데이터는 안전해요"). 상태는 DataStore(`room_migration`)의 uid 기반 완료 값 + Room 데이터 유무 + Worker 상태로만 계산하고 새 서버 호출은 없다(`LegacyMigrationStatus.observePhase`, 판정 함수 `legacyMigrationPhase`)
   - Analytics: `room_migration_started`(이어하기에선 안 찍힘)/`room_migration_completed`(폴더·장소·게시물 개수, 처음 시작부터의 소요 시간)/`room_migration_failed`(`error_type`: network·permission·unknown). 내용은 넣지 않는다
   - 알려진 한계: 이전 도중 사용자가 같은 이름의 폴더를 새로 만들면 이름이 겹칠 수 있다. 이전 도중 지운 장소가 아직 안 옮겨진 게시물의 `placeIds`에 남을 수 있다(읽는 쪽이 무시하므로 화면엔 안 보인다)
+- **썸네일 고아 정리의 서버 확인**: `ThumbnailMaintenance`는 캐시(`cachedPostIds`) 기준으로 고아로 의심되는 파일만 `SavedPostRepository.findIdsAbsentOnServer`(`whereIn(documentId)` 30개씩, `Source.SERVER`)로 확인하고 **서버에도 없다고 확인된 것만** 지운다. 오프라인·실패·상한(한 번에 60개) 초과분은 지우지 않고 다음 실행으로 미룬다. 읽기는 의심 파일이 없으면 0, 있으면 질의당 최소 1건(서버에 있는 문서만큼 더). 확인된 문서는 캐시에 들어가 다음부터 의심에서 빠진다. 이전이 끝나기 전엔 고아 판단 자체를 안 한다(위 규칙 유지). 아래 "알려진 위험(2단계부터)"은 이 확인으로 완화됐다
 - **Firestore 콘솔에서 직접 할 일**(코드로 안 됨): 서울 리전 프로덕션 모드 DB 생성, Authentication 익명 로그인 켜기, 예산 알림, 규칙·인덱스 배포(`firebase deploy --only firestore`)
 - **알려진 위험(2단계부터)**: `cachedPostIds()`(썸네일 고아 정리)는 Firestore **캐시**에서 ID를 읽는다. 캐시가 20MB 상한으로 정리(GC)돼 일부 게시물이 캐시에서 빠지면 그 썸네일이 고아로 오판돼 지워질 수 있다. 문서가 작아 거의 안 일어나지만, 캐시 상한을 줄이거나 문서를 크게 만들면 다시 봐야 한다
 

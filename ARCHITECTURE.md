@@ -41,7 +41,7 @@
        ▼
 ┌─────────────────────┐
 │ F1. 공유 수신         │  화면 없음. 토스트만 띄우고 즉시 종료
-│ ShareReceiver        │  Room에 URL 저장 (밀리초, 절대 실패 안 함)
+│ ShareReceiver        │  Firestore(로컬 캐시)에 URL 저장 — 절대 실패 안 함
 └──────┬──────────────┘
        │ WorkManager에 작업 위임
        ▼
@@ -73,16 +73,17 @@
 1. 인스타그램에서 게시물 → 공유 → "언제가지" 선택
 2. `ShareReceiverActivity`가 인텐트를 받음 (투명 테마, UI 없음)
 3. URL에서 shortcode 추출 (`/p/{code}/`, `/reel/{code}/`, `/tv/{code}/`), 추적용 쿼리 파라미터(`?igsh=...`) 제거
-4. Room에 `SavedPost` 레코드 생성 — **동기 처리**라 밀리초 단위로 끝남
+4. **로그인돼 있으면** Firestore에 `SavedPost` 문서 생성 — 로컬 캐시에 반영된 것까지만 확인(밀리초)하고 서버 응답은 기다리지 않는다. **로그인 전이면**(설치 직후 오프라인) 기다리지 않고 URL을 WorkManager(`SaveSharedPostWorker`)에 맡겨, 로그인되는 대로 저장한다
 5. 토스트 표시 후 즉시 `finish()`
 
 | 상황 | 토스트 문구 |
 |---|---|
-| 정상 저장 | "저장됨" |
+| 정상 저장 (온라인) | "저장했어요" |
+| 정상 저장 (오프라인) | "저장했어요. 인터넷에 연결되면 정리를 시작해요" |
 | 같은 게시물 중복 공유 | "이미 저장된 게시물이에요" |
 | 인스타 링크가 아님 | "인스타그램 링크를 찾을 수 없어요" |
 
-> 이 단계는 네트워크를 전혀 쓰지 않는다. 비행기 모드에서도 저장은 성공한다. (설계 원칙 1)
+> 이 단계는 서버 응답을 기다리지 않는다. 비행기 모드에서도, 로그인 전에도 저장은 성공한다(URL은 로컬 캐시나 WorkManager에 남는다). (설계 원칙 1)
 
 ### 플로우 2 — 자동 인식 (F2, 백그라운드)
 
@@ -195,7 +196,9 @@
 | UI | Jetpack Compose + Material 3 | |
 | 아키텍처 | MVVM + UDF | 화면당 단일 `UiState`를 `StateFlow`로 노출 |
 | DI | Hilt | |
-| 로컬 DB | Room | 현재 스키마 버전 6 |
+| 데이터 원본 | Firestore (named FirebaseApp `wherewegoing`) | `users/{uid}` 아래, 영구 캐시 20MB (→ 7장) |
+| 로그인 | Firebase Auth 익명 로그인 | 계정 UI 없음 |
+| 로컬 DB (레거시) | Room | 스키마 v9 고정, **읽기 전용** — 업데이트 전 사용자의 데이터를 Firestore로 1회 옮기는 데만 쓰고 다음 버전에서 제거 예정 |
 | 네비게이션 | Navigation Compose | |
 | 비동기 | Coroutines + Flow | |
 | 백그라운드 | WorkManager | 캡션 파싱, 정리 알림 |
@@ -219,7 +222,7 @@ ui/          Compose 화면 + ViewModel + UiState
              ↓ (ViewModel이 UseCase/Repository 호출)
 domain/      비즈니스 로직. Repository는 인터페이스만 여기에 둔다
              ↓
-data/        Repository 구현체, Room, Retrofit, WorkManager, Firebase 클라이언트
+data/        Repository 구현체(Firestore), Retrofit, WorkManager, Firebase 클라이언트, 레거시 Room(이전 전용)
 ```
 
 **규칙**
@@ -231,16 +234,19 @@ data/        Repository 구현체, Room, Retrofit, WorkManager, Firebase 클라�
 
 ```
 com.github.chsssssss.eonje/
-├─ di/                    Hilt 모듈 (Database, Network, Repository, WorkManager, Notification)
+├─ di/                    Hilt 모듈 (Firestore, Database, Network, Repository, WorkManager, Notification)
 ├─ data/
-│  ├─ local/              Room — Entity, Dao, Database, TypeConverter
+│  ├─ firestore/          Firestore Repository 구현 4개, AuthSession(익명 로그인), FirestoreMappers(도메인 ↔ 문서)
+│  ├─ migration/          Room → Firestore 1회 이전 (RoomToFirestoreMigrator, 진행 기록)
+│  ├─ local/              Room(레거시, 읽기 전용) — Entity, Dao, Database, ThumbnailStore
+│  ├─ mapper/             Room Entity ↔ 도메인 모델
 │  ├─ remote/             카카오 Retrofit API + Firebase 앱 이름 상수
-│  ├─ repository/         Repository 구현체
-│  ├─ worker/             CaptionParsingWorker, InboxReminderWorker
+│  ├─ repository/         그 밖의 Repository 구현체 + RoomXxxRepository(이전용)
+│  ├─ worker/             CaptionParsingWorker, SaveSharedPostWorker, RoomMigrationWorker, InboxReminderWorker
 │  └─ notification/       알림 구현체
 ├─ domain/
-│  ├─ model/              도메인 모델 (ExtractedPlace, PlaceCandidate, ResolveStatus …)
-│  ├─ repository/         Repository 인터페이스
+│  ├─ model/              도메인 모델 — 저장소 구현에 의존하지 않는 순수 모델 (SavedPost, Place, Folder, ExtractedCandidate, ResolveStatus …)
+│  ├─ repository/         Repository 인터페이스 + UserSession, PostWorkScheduler, LegacyMigrationStatus
 │  ├─ usecase/            SaveSharedPostUseCase, MatchPostUseCase
 │  └─ util/               InstagramUrlParser, RelativeTimeFormatter
 ├─ ui/
@@ -256,7 +262,7 @@ com.github.chsssssss.eonje/
 
 | 클래스 | 역할 |
 |---|---|
-| `SaveSharedPostUseCase` | F1 — URL 파싱 → Room 저장 → Worker 등록 |
+| `SaveSharedPostUseCase` | F1 — URL 파싱 → (로그인돼 있으면) Firestore 저장 → Worker 등록, 로그인 전이면 `SaveSharedPostWorker`에 맡김 |
 | `MatchPostUseCase` | F2 전체 파이프라인 — 캡션 조회 → 파싱 → 검색 → 상태 결정 |
 | `CaptionParsingRepositoryImpl` | 온디바이스 우선 → 클라우드 폴백 분기 처리 |
 | `InstagramMetaLookupRepositoryImpl` | Cloud Function 호출 래퍼 |
@@ -266,7 +272,7 @@ com.github.chsssssss.eonje/
 
 ## 6. 백엔드 구조
 
-**자체 서버는 없다.** 모든 API는 앱에서 직접 호출한다. 단 하나의 예외가 Cloud Function이다.
+**직접 운영하는 서버는 없다.** 데이터는 Firestore(서버리스), 나머지 API는 앱에서 직접 호출한다. 커스텀 백엔드 코드는 Cloud Function 하나뿐이다.
 
 ### `fetchInstagramMeta` (Firebase Cloud Functions, Node.js)
 
@@ -313,22 +319,26 @@ Firebase AI Logic과 Cloud Function 둘 다 App Check로 보호한다. 검증되
 
 게시물과 장소는 **다대다** 관계다. 게시물 하나에 장소가 여럿일 수 있고(리스트형 게시물), 같은 가게가 여러 게시물에 나올 수도 있다.
 
+### 원본: Firestore
+
+개인 데이터는 전부 `users/{uid}` 아래에 있고, 필드는 iOS에서도 쓸 수 있게 플랫폼 중립적이다(enum은 문자열, 시간은 Long 밀리초, 문서 ID는 UUID). 변환은 `data/firestore/FirestoreMappers.kt` 한 곳이다.
+
 ```
-SavedPostEntity ──┐                    ┌── PlaceEntity
- (게시물)          │  PostPlaceCrossRef │    (장소)
-                  └────────────────────┘        │
-                                                │  PlaceTagCrossRef
-ExtractedCandidateEntity                        └──────────── TagEntity
- (정리 화면에 보여줄 후보 목록)                                    (태그)
+users/{uid}/folders/{folderId}   name, color, iconKey, createdAt
+users/{uid}/places/{placeId}     name, address, latitude, longitude, kakaoPlaceId, category,
+                                 status, createdAt, resolvedAt, folderId(null = 미분류)
+users/{uid}/posts/{postId}       instagramUrl, shortcode, caption, status, extractedCount, createdAt,
+                                 unresolvedReason, placeIds[], candidates[]
 ```
 
-| 테이블 | 역할 | 주요 필드 |
-|---|---|---|
-| `saved_posts` | 공유받은 게시물 | `instagramUrl`, `shortcode`, `caption`, `thumbnailUrl`, `status`, `extractedCount`, `unresolvedReason` |
-| `places` | 확정된 장소 | `name`, `address`, `latitude`, `longitude`, `kakaoPlaceId`, `category`, `memo`, `status` |
-| `post_place_cross_ref` | 게시물 ↔ 장소 연결 | |
-| `extracted_candidates` | AI가 뽑은 항목별 카카오 후보 | `extractionIndex`, `extractedName`, `rank`, 후보 정보 |
-| `tags` / `place_tag_cross_ref` | 태그 | |
+- 게시물 ↔ 장소 연결은 게시물 문서의 `placeIds` 배열이다. AI가 뽑은 항목별 카카오 후보는 별도 컬렉션이 아니라 게시물 문서의 `candidates` 배열이다(정리하면 사라지는 임시 데이터).
+- 문서에 없는 것: `memo`(기능 제거), `thumbnailUrl` — 썸네일은 기기에 받아둔 `{postId}.jpg`이고 읽을 때 파일이 있으면 채운다.
+- 화면·유스케이스는 도메인 모델(`domain/model`)만 안다. Room Entity나 Firestore 문서 타입이 위로 새지 않는다.
+- **삭제 연쇄**(폴더 삭제 → 장소 미분류, 장소 삭제 → 게시물 `placeIds`에서 제거)는 DAO가 아니라 `FirestoreFolderRepository`/`FirestorePlaceRepository`에 있다(문서 DB엔 외래 키가 없다).
+
+### 레거시: Room (v9, 읽기 전용)
+
+업데이트 전 사용자의 데이터가 들어 있는 스키마(`saved_posts`, `places`, `PostPlaceCrossRef`, `extracted_candidates`, `folders`)다. 앱은 Firestore만 읽고 쓰며, `RoomToFirestoreMigrator`만 Room을 읽어 한 번 옮긴다. Room 데이터는 지우지 않는다(정리는 다음 버전). 이전이 끝나기 전에는 홈에 안내 배너가 뜨고, 썸네일 정리·캡션 작업은 이전이 끝날 때까지 기다린다.
 
 ### 상태 전이
 
@@ -386,17 +396,19 @@ ExtractedCandidateEntity                        └─────────�
 
 | 결정 | 이유 |
 |---|---|
-| 공유 저장을 동기 처리로 | 밀리초 단위로 끝나고, 비동기로 만들면 "저장 실패" 가능성이 생긴다 (설계 원칙 1 위배) |
+| 공유 저장은 서버 응답을 기다리지 않는다 | 로컬 캐시 쓰기는 밀리초로 끝나고, 서버를 기다리면 오프라인에서 저장이 멈춘다 (설계 원칙 1 위배). 로그인 전이면 URL을 WorkManager에 먼저 남긴다 |
 | 다중 장소 자동 확정 금지 | 리스트형 게시물에서 원하지 않는 가게까지 저장되면 사용자가 직접 지워야 한다 |
 | 카카오맵 + 카카오 로컬 조합 | 좌표계가 통일되어 변환이 필요 없다 |
 | 온디바이스 AI 우선 | 비용 0, 네트워크 불필요, 프라이버시. 단 비전(이미지)은 아직 불안정해 클라우드만 사용 |
-| Room `fallbackToDestructiveMigration` | 출시 전이라 스키마 변경 시 마이그레이션 대신 초기화. **출시 전에 반드시 제거해야 함** |
+| Firestore를 원본으로 | 이후 iOS 앱과 친구 공유를 붙이려면 데이터가 서버에 있어야 한다. 비용은 무료 한도 + 예산 알림으로 감시 |
+| Room은 이전용으로만 유지 | 이미 출시된 앱의 사용자 데이터를 잃지 않으려고 1회 이전(체크포인트·uid 기반 완료 값·덮어쓰기 방지)하고, Room은 다음 버전에서 정리 |
 
 ---
 
 ## 10. 알려진 이슈 / 앞으로 할 일
 
-- [ ] **출시 전 필수**: Room `fallbackToDestructiveMigration` 제거하고 실제 마이그레이션 작성
+- [ ] **다음 버전**: 이전이 충분히 퍼진 뒤 Room 코드와 데이터 정리(`RoomXxxRepository`, DAO, `RoomToFirestoreMigrator`)
+- [ ] **콘솔**: Firestore 서울 리전 프로덕션 모드 생성, 익명 로그인 켜기, 예산 알림, 규칙·인덱스 배포
 - [ ] **출시 전 필수**: App Check 디버그 토큰 정리 (`firebase appcheck:debugtokens:delete`)
 - [ ] `UnresolvedReason.NETWORK_ERROR`와 `PLACE_NOT_FOUND`가 UI에서 똑같이 "직접 찾기"로 보인다 — 인프라 장애인지 진짜 못 찾은 건지 구분이 안 됨
 - [ ] Cloud Function에 `maxInstances` 미설정 — 폭주 시 비용 상한이 없다. 지출 한도 킬스위치보다 이쪽이 안전한 방어책
