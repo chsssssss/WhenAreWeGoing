@@ -63,6 +63,11 @@ class RoomMigrationStatusImpl(
         return postDao.findByShortcode(shortcode) != null
     }
 
+    override suspend fun skippedPostIds(): Set<String> {
+        val state = store.read()
+        return if (state.uid == session.currentUid()) state.skippedPostIds else emptySet()
+    }
+
     override fun observePhase(): Flow<LegacyMigrationPhase> =
         combine(session.uid, store.states, migrationWorkRunning) { uid, state, running ->
             legacyMigrationPhase(uid, state, running, ::hasRoomData)

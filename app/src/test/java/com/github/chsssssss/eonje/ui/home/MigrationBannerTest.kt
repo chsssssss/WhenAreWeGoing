@@ -83,6 +83,14 @@ class MigrationBannerTest {
     }
 
     @Test
+    fun 첫_값이_오기_전에는_어떤_문구도_보여주지_않는다() {
+        // HomeUiState의 초기값은 "장소 없음"처럼 보이므로, 로딩 중에는 이전 대상 여부와 상관없이 비워둔다.
+        assertEquals(PlaceListContent.LOADING, placeListContent(hasNoSavedPlaces = false, placesEmpty = true, migrationActive = false, isLoaded = false))
+        assertEquals(PlaceListContent.LOADING, placeListContent(hasNoSavedPlaces = true, placesEmpty = true, migrationActive = false, isLoaded = false))
+        assertFalse(com.github.chsssssss.eonje.ui.home.HomeUiState().isLoaded)
+    }
+
+    @Test
     fun 목록_영역은_이전_전에도_중에도_저장된_장소가_없다는_말을_하지_않는다() {
         // 신규 설치(이전 없음): 안내 카드
         assertEquals(PlaceListContent.GUIDE_CARD, placeListContent(hasNoSavedPlaces = true, placesEmpty = true, migrationActive = false))

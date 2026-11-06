@@ -30,4 +30,10 @@ interface FolderDao {
 
     @Query("SELECT COUNT(*) FROM folders")
     suspend fun count(): Int
+
+    @Query("SELECT id FROM folders WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun idsAfter(afterId: String, limit: Int): List<String>
+
+    @Query("SELECT * FROM folders WHERE id = :id LIMIT 1")
+    suspend fun findById(id: String): FolderEntity?
 }

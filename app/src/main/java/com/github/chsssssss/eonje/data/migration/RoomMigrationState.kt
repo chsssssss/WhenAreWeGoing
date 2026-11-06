@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -42,7 +43,17 @@ data class MigrationState(
     val folderCount: Int = 0,
     val placeCount: Int = 0,
     val postCount: Int = 0,
+    /**
+     * 이전하지 못하고 건너뛴 문서: "종류:ID:사유" 문자열. 규칙이 거부했거나(PERMISSION_DENIED·INVALID_ARGUMENT) Room에서 읽을 수 없는
+     * 행이다. **ID와 사유 코드만** 남기고 캡션 같은 내용은 남기지 않는다. 이 문서들은 Room에 그대로 남아 있다.
+     */
+    val skipped: Set<String> = emptySet(),
 ) {
+    /** 건너뛴 게시물 ID. */
+    val skippedPostIds: Set<String> get() = skipped.mapNotNull { entry ->
+        entry.split(':', limit = 3).takeIf { it.size == 3 && it[0] == MigrationKind.POSTS.name }?.get(1)
+    }.toSet()
+
     fun cursor(kind: MigrationKind) = when (kind) {
         MigrationKind.FOLDERS -> folderCursor
         MigrationKind.PLACES -> placeCursor
@@ -91,9 +102,10 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
     }
 
     /** [cursor]까지 서버에 확정됐고 그중 [processed]개를 처리했다. 서버 확정 **뒤에** 부른다. */
-    suspend fun saveProgress(uid: String, kind: MigrationKind, cursor: String, processed: Int) {
+    suspend fun saveProgress(uid: String, kind: MigrationKind, cursor: String, processed: Int, skipped: List<String> = emptyList()) {
         dataStore.edit { prefs ->
             if (prefs[KEY_UID] != uid) return@edit
+            if (skipped.isNotEmpty()) prefs[KEY_SKIPPED] = (prefs[KEY_SKIPPED] ?: emptySet()) + skipped
             when (kind) {
                 MigrationKind.FOLDERS -> { prefs[KEY_FOLDER_CURSOR] = cursor; prefs[KEY_FOLDER_COUNT] = (prefs[KEY_FOLDER_COUNT] ?: 0) + processed }
                 MigrationKind.PLACES -> { prefs[KEY_PLACE_CURSOR] = cursor; prefs[KEY_PLACE_COUNT] = (prefs[KEY_PLACE_COUNT] ?: 0) + processed }
@@ -137,6 +149,7 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         folderCount = this[KEY_FOLDER_COUNT] ?: 0,
         placeCount = this[KEY_PLACE_COUNT] ?: 0,
         postCount = this[KEY_POST_COUNT] ?: 0,
+        skipped = this[KEY_SKIPPED] ?: emptySet(),
     )
 
     private companion object {
@@ -153,5 +166,6 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         val KEY_FOLDER_COUNT = intPreferencesKey("folder_count")
         val KEY_PLACE_COUNT = intPreferencesKey("place_count")
         val KEY_POST_COUNT = intPreferencesKey("post_count")
+        val KEY_SKIPPED = stringSetPreferencesKey("skipped_docs")
     }
 }

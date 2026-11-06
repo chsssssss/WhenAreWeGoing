@@ -65,6 +65,7 @@ class RoomToFirestoreMigratorTest {
     private lateinit var store: RoomMigrationStateStore
     private lateinit var uid: String
     private var notified = 0
+    private val SECRET = "SECRET_CAPTION_"
 
     @Before
     fun setUp() = runBlocking<Unit> {
@@ -292,6 +293,147 @@ class RoomToFirestoreMigratorTest {
         assertNull(firestore.places(uid).document("lonely").get(Source.SERVER).await().getString("folderId"))
     }
 
+    // ── 문제 문서 격리: 규칙이 거부하는 문서가 섞여 있어도 이전은 끝난다 ──
+
+    @Test
+    fun 규칙에_걸리는_게시물_하나가_섞여도_나머지는_전부_이전되고_완료로_끝나며_걸린_문서만_건너뛴다() = runBlocking {
+        seed()
+        db.savedPostDao().insert(badCaptionPost("post-bad")) // 캡션 21,000자 → 규칙 상한(20,000) 초과
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals("정상 게시물 5개만 이전한 개수로 센다", 5, outcome.posts)
+        assertEquals(1, outcome.skipped)
+        assertEquals((1..5).map { "post-$it" }.toSet(), serverIds(firestore.posts(uid)))
+        val state = store.read()
+        assertTrue("건너뛴 문서가 있어도 완료로 표시한다(홈 배너가 사라진다)", state.completed)
+        assertEquals(setOf("POSTS:post-bad:PERMISSION_DENIED"), state.skipped)
+        assertEquals(setOf("post-bad"), state.skippedPostIds)
+        // 캡션 같은 내용은 기록하지 않는다. ID와 사유 코드뿐이다.
+        assertFalse(state.skipped.any { it.contains(SECRET) })
+        // Room 데이터는 그대로 — 건너뛴 문서도 남아 있다.
+        assertEquals(6, db.savedPostDao().count())
+        assertTrue(db.savedPostDao().findById("post-bad")!!.caption!!.startsWith(SECRET))
+        // 거부 원인 감별용 프로브 문서는 지워졌다.
+        assertFalse("migration-probe" in serverIds(firestore.posts(uid)))
+        assertEquals(MigrationOutcome.AlreadyCompleted, migrator().migrate(uid))
+    }
+
+    @Test
+    fun 한_배치_안에_걸리는_문서가_여러_개여도_폴더_장소_게시물_모두_격리하고_나머지를_옮긴다() = runBlocking {
+        seed()
+        db.folderDao().insert(FolderEntity("folder-bad", "", 5L, 0, "☕")) // 빈 이름
+        db.placeDao().insert(placeEntity("place-bad", folderId = null).copy(name = "가".repeat(201))) // 이름 상한 200 초과
+        db.savedPostDao().insert(badCaptionPost("post-b1"))
+        db.savedPostDao().insert(badCaptionPost("post-b2").copy(instagramUrl = "https://www.instagram.com/p/" + "a".repeat(500))) // URL 상한 500 초과
+        db.savedPostDao().insert(badCaptionPost("post-b3").copy(caption = "ok", extractedCount = 5_000)) // extractedCount 상한 1000 초과
+
+        // 배치 크기 4: 게시물 두 번째 페이지는 [post-5, post-b1, post-b2, post-b3] — 4개 중 3개가 걸린다.
+        val outcome = migrator(batchSize = 4).migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(5, outcome.skipped)
+        assertEquals(2, outcome.folders)
+        assertEquals(5, outcome.places)
+        assertEquals(5, outcome.posts)
+        assertEquals(setOf("folder-1", "folder-2"), serverIds(firestore.folders(uid)))
+        assertEquals((1..5).map { "place-$it" }.toSet(), serverIds(firestore.places(uid)))
+        assertEquals((1..5).map { "post-$it" }.toSet(), serverIds(firestore.posts(uid)))
+        assertEquals(
+            setOf(
+                "FOLDERS:folder-bad:PERMISSION_DENIED", "PLACES:place-bad:PERMISSION_DENIED",
+                "POSTS:post-b1:PERMISSION_DENIED", "POSTS:post-b2:PERMISSION_DENIED", "POSTS:post-b3:PERMISSION_DENIED",
+            ),
+            store.read().skipped,
+        )
+        assertTrue(store.read().completed)
+        assertEquals("Room은 그대로", 3, db.folderDao().count())
+        assertEquals(6, db.placeDao().count())
+        assertEquals(8, db.savedPostDao().count())
+    }
+
+    @Test
+    fun 전부_문제_문서여도_계정_전체_거부가_아니면_모두_건너뛰고_완료한다() = runBlocking {
+        db.savedPostDao().insert(badCaptionPost("post-b1"))
+        db.savedPostDao().insert(badCaptionPost("post-b2"))
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(0, outcome.posts)
+        assertEquals(2, outcome.skipped)
+        assertTrue(store.read().completed)
+        assertTrue(serverIds(firestore.posts(uid)).isEmpty())
+    }
+
+    @Test
+    fun 일시적_오류와_영구_실패가_섞이면_일시적_오류는_재시도하고_영구_실패만_격리한다() = runBlocking {
+        seed()
+        db.savedPostDao().insert(badCaptionPost("post-bad"))
+        // 게시물 배치: 1차 전체 커밋(거부) → 절반씩 나눠 다시 커밋. 그 두 번째 하위 커밋에서 네트워크 오류가 난다.
+        var postCommits = 0
+        val flaky = object : MigrationHooks {
+            override suspend fun beforeCommit(kind: MigrationKind, ids: List<String>) {
+                if (kind == MigrationKind.POSTS && ++postCommits == 3) throw java.io.IOException("네트워크 끊김 시뮬레이션")
+            }
+        }
+        assertThrows(java.io.IOException::class.java) { runBlocking { migrator(hooks = flaky).migrate(uid) } }
+        val mid = store.read()
+        assertFalse("일시적 오류는 완료도 격리도 아니다", mid.completed)
+        assertFalse("끝나지 않은 페이지의 격리 기록은 남기지 않는다", mid.skipped.isNotEmpty())
+        assertEquals("게시물 체크포인트는 아직 안 움직였다", "", mid.postCursor)
+
+        // 다시 시도하면 이어서 끝난다: 이미 커밋된 정상 문서는 건너뛰고(중복·덮어쓰기 없음), 걸린 문서만 격리된다.
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(1, outcome.skipped)
+        assertEquals((1..5).map { "post-$it" }.toSet(), serverIds(firestore.posts(uid)))
+        assertEquals(setOf("POSTS:post-bad:PERMISSION_DENIED"), store.read().skipped)
+        assertTrue(store.read().completed)
+    }
+
+    @Test
+    fun 계정_전체가_거부되면_문서를_건너뛰지_않고_재시도하게_둔다() = runBlocking {
+        seed()
+        // 규칙 미배포·로그인 풀림·App Check 시행 같은 상황: 첫 커밋 직전에 로그아웃해서 이후의 모든 쓰기가 거부되게 한다.
+        val signOut = object : MigrationHooks {
+            override suspend fun beforeCommit(kind: MigrationKind, ids: List<String>) {
+                if (kind == MigrationKind.FOLDERS) {
+                    auth.signOut()
+                    // Firestore SDK가 사용자 전환을 처리할 시간을 준다 — 바로 커밋하면 이전 사용자의 쓰기 큐에 들어가 거부도 승인도
+                    // 못 받고 멈춘다(실제로 사용자가 로그아웃되는 일은 없고, 이 테스트가 "계정 전체 거부"를 흉내내려는 방법일 뿐이다).
+                    kotlinx.coroutines.delay(2_000)
+                }
+            }
+        }
+
+        val failure = runCatching { migrator(hooks = signOut).migrate(uid) }.exceptionOrNull()
+
+        assertTrue("건너뛰고 끝내면 안 되고 실패로 던져야 한다: $failure", failure is com.google.firebase.firestore.FirebaseFirestoreException)
+        val state = store.read()
+        assertFalse("완료로 표시하면 안 된다", state.completed)
+        assertTrue("아무것도 건너뛴 것으로 기록하면 안 된다", state.skipped.isEmpty())
+        assertEquals("Room은 그대로", 5, db.savedPostDao().count())
+    }
+
+    @Test
+    fun Room에서_읽을_수_없는_행은_격리하고_나머지를_옮긴다() = runBlocking {
+        seed()
+        // 지금 앱이 모르는 status 문자열 — Converters가 valueOf로 읽다 예외를 던져 그 페이지 전체를 못 읽게 만드는 행
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO saved_posts(id, shortcode, instagramUrl, caption, thumbnailUrl, status, extractedCount, createdAt, unresolvedReason) " +
+                "VALUES('post-zz', 'SCZ', 'https://www.instagram.com/p/SCZ/', '$SECRET', NULL, 'LEGACY_STATUS', 0, 1, NULL)",
+        )
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { db.savedPostDao().pageAfter("", 100) } }
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(5, outcome.posts)
+        assertEquals(1, outcome.skipped)
+        assertEquals((1..5).map { "post-$it" }.toSet(), serverIds(firestore.posts(uid)))
+        assertEquals(setOf("POSTS:post-zz:UNREADABLE"), store.read().skipped)
+        assertTrue(store.read().completed)
+        assertEquals("Room 행은 그대로 남아 있다", 6, db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM saved_posts").use { it.moveToFirst(); it.getInt(0) })
+    }
+
     // ── 완료 표시와 uid ──
 
     @Test
@@ -349,6 +491,13 @@ class RoomToFirestoreMigratorTest {
     // ── 도구 ──
 
     private class Crash : RuntimeException("강제 종료 시뮬레이션")
+
+    /** 캡션이 규칙 상한(20,000자)을 넘는 게시물. 캡션 앞에 SECRET을 붙여서 기록에 내용이 새지 않는지 확인한다. */
+    private fun badCaptionPost(id: String) = SavedPostEntity(
+        id = id, shortcode = "SC-$id", instagramUrl = "https://www.instagram.com/p/SC-$id/", caption = SECRET + "가".repeat(21_000),
+        thumbnailUrl = null, status = ResolveStatus.UNRESOLVED, extractedCount = 0, createdAt = 2_000L,
+        unresolvedReason = UnresolvedReason.PLACE_NOT_FOUND,
+    )
 
     private fun migrator(batchSize: Int = 499, hooks: MigrationHooks = MigrationHooks.None) = RoomToFirestoreMigrator(
         firestore, db.folderDao(), db.placeDao(), db.savedPostDao(), db.postPlaceCrossRefDao(), db.extractedCandidateDao(),

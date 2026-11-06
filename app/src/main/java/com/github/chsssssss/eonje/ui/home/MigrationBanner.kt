@@ -71,9 +71,16 @@ internal fun hasNoSavedPlaces(storedPlacesEmpty: Boolean, phase: LegacyMigration
     storedPlacesEmpty && phase == LegacyMigrationPhase.NOT_NEEDED
 
 /** 홈 목록 영역에 무엇을 그릴지. */
-internal enum class PlaceListContent { GUIDE_CARD, MIGRATION_PLACEHOLDER, NO_RESULTS, LIST }
+internal enum class PlaceListContent { LOADING, GUIDE_CARD, MIGRATION_PLACEHOLDER, NO_RESULTS, LIST }
 
-internal fun placeListContent(hasNoSavedPlaces: Boolean, placesEmpty: Boolean, migrationActive: Boolean): PlaceListContent = when {
+internal fun placeListContent(
+    hasNoSavedPlaces: Boolean,
+    placesEmpty: Boolean,
+    migrationActive: Boolean,
+    isLoaded: Boolean = true,
+): PlaceListContent = when {
+    // 첫 값이 오기 전엔 아무 말도 하지 않는다(초기값이 "장소 없음"으로 그려지는 걸 막는다).
+    !isLoaded -> PlaceListContent.LOADING
     hasNoSavedPlaces -> PlaceListContent.GUIDE_CARD
     // 이전 중인데 아직 보여줄 장소가 없다 — "저장된 장소가 없어요"라고 말하지 않고 비워둔다(위 배너가 이유를 말해준다).
     placesEmpty && migrationActive -> PlaceListContent.MIGRATION_PLACEHOLDER

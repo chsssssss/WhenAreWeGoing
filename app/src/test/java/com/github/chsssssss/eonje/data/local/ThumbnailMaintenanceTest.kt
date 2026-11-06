@@ -135,6 +135,19 @@ class ThumbnailMaintenanceTest {
     }
 
     @Test
+    fun `이전에서 건너뛴 게시물의 파일은 서버에 문서가 없어도 지우지도 서버에 묻지도 않는다`() = runBlocking {
+        file("a.jpg", 10)
+        file("skipped.jpg", 10) // 규칙에 걸려 Firestore로 못 옮겼지만 Room에는 남아 있는 게시물 — 썸네일은 복구할 수 없다
+        file("gone.jpg", 10)
+        val posts = FakePosts(listOf(post("a")))
+
+        maintenance(posts, FakeState(done = true), legacy = FakeLegacy(complete = true, skipped = setOf("skipped"))).run(now)
+
+        assertEquals(listOf("a.jpg", "skipped.jpg"), dir.list()!!.sorted())
+        assertEquals("서버에는 건너뛴 게시물이 아닌 의심 파일만 묻는다", listOf(listOf("gone")), posts.serverChecks)
+    }
+
+    @Test
     fun `Room 이전이 끝나면 다시 고아를 지운다`() = runBlocking {
         file("a.jpg", 10)
         file("gone.jpg", 10)
@@ -375,7 +388,8 @@ class ThumbnailMaintenanceTest {
     ) = ThumbnailMaintenance(ThumbnailStore(dir, OkHttpClient(), codec), posts, state, legacy)
 }
 
-private class FakeLegacy(var complete: Boolean) : LegacyMigrationStatus {
+private class FakeLegacy(var complete: Boolean, var skipped: Set<String> = emptySet()) : LegacyMigrationStatus {
+    override suspend fun skippedPostIds() = skipped
     override suspend fun isComplete() = complete
     override suspend fun isLegacyDuplicate(shortcode: String) = false
 }

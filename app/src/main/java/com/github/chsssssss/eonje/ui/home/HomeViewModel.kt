@@ -192,6 +192,7 @@ class HomeViewModel @Inject constructor(
             folderAssignForPlaceId = folderAssign.placeId,
             folderAssignSelectedFolderId = folderAssign.selectedFolderId,
             hasNoSavedPlaces = hasNoSavedPlaces(places.isEmpty(), migration.phase),
+            isLoaded = true,
             migrationPhase = migration.phase,
             migrationBanner = migration.banner,
         )

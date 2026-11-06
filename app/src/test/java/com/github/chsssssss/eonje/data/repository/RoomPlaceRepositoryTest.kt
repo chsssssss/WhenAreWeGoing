@@ -166,6 +166,9 @@ class RoomPlaceRepositoryTest {
             places.values.filter { it.id > afterId }.sortedBy { it.id }.take(limit)
 
         override suspend fun count(): Int = places.size
+
+        override suspend fun idsAfter(afterId: String, limit: Int): List<String> =
+            places.keys.filter { it > afterId }.sorted().take(limit)
     }
 
     private class FakePostPlaceCrossRefDao : PostPlaceCrossRefDao {
@@ -204,5 +207,6 @@ class RoomPlaceRepositoryTest {
         override suspend fun deleteByIds(ids: List<String>) = error("호출되면 안 된다")
         override suspend fun pageAfter(afterId: String, limit: Int): List<SavedPostEntity> = error("호출되면 안 된다")
         override suspend fun count(): Int = error("호출되면 안 된다")
+        override suspend fun idsAfter(afterId: String, limit: Int): List<String> = error("호출되면 안 된다")
     }
 }

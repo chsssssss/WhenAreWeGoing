@@ -57,4 +57,7 @@ interface SavedPostDao {
 
     @Query("SELECT COUNT(*) FROM saved_posts")
     suspend fun count(): Int
+
+    @Query("SELECT id FROM saved_posts WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun idsAfter(afterId: String, limit: Int): List<String>
 }

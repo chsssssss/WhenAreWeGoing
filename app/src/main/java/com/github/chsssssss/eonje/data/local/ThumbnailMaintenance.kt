@@ -92,10 +92,14 @@ class ThumbnailMaintenance @Inject constructor(
         // 썸네일은 지우면 복구할 수 없다. 캐시 기준으로 의심되는 파일만 서버에 물어서, **서버에도 없다고 확인된 것만** 지운다.
         // 서버가 대답하지 않은 것(오프라인·오류)과 한 번에 확인할 수 있는 개수를 넘는 것은 지키고 다음 기회로 미룬다.
         // 읽기는 의심 파일 수만큼만(최대 MAX_SERVER_CHECKS_PER_RUN개) 들고, 의심 파일이 없으면 0이다.
+        // Room → Firestore 이전에서 건너뛴 게시물(규칙이 거부한 문서)은 서버에 문서가 없어도 고아가 아니다 — Room에 남아 있고 썸네일은
+        // 복구할 수 없다. 서버에 묻지도 않고 지키기만 한다.
+        val skippedKeys = if (canJudgeOrphans) legacyMigration.skippedPostIds() else emptySet()
         val keysToKeep = if (canJudgeOrphans) {
-            val suspectKeys = files.filter { !it.name.endsWith(".tmp") }.map(store::keyOf).filter { it !in knownIds }.distinct()
+            val suspectKeys = files.filter { !it.name.endsWith(".tmp") }.map(store::keyOf)
+                .filter { it !in knownIds && it !in skippedKeys }.distinct()
             val confirmedAbsent = if (suspectKeys.isEmpty()) emptySet() else posts.findIdsAbsentOnServer(suspectKeys.take(MAX_SERVER_CHECKS_PER_RUN))
-            suspectKeys.toSet() - confirmedAbsent
+            suspectKeys.toSet() - confirmedAbsent + skippedKeys
         } else {
             emptySet()
         }

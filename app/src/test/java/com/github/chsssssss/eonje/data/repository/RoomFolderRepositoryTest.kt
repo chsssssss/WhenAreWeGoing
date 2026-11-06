@@ -93,6 +93,9 @@ class RoomFolderRepositoryTest {
         override suspend fun pageAfter(afterId: String, limit: Int): List<FolderEntity> =
             rows.filter { it.id > afterId }.sortedBy { it.id }.take(limit)
         override suspend fun count(): Int = rows.size
+        override suspend fun idsAfter(afterId: String, limit: Int): List<String> =
+            rows.map { it.id }.filter { it > afterId }.sorted().take(limit)
+        override suspend fun findById(id: String): FolderEntity? = rows.firstOrNull { it.id == id }
     }
 
     private class FakePlaceDao : PlaceDao {
@@ -108,6 +111,7 @@ class RoomFolderRepositoryTest {
         }
         override suspend fun delete(id: String) { rows.removeAll { it.id == id } }
         override suspend fun pageAfter(afterId: String, limit: Int): List<PlaceEntity> = emptyList()
+        override suspend fun idsAfter(afterId: String, limit: Int): List<String> = emptyList()
         override suspend fun count(): Int = rows.size
     }
 }

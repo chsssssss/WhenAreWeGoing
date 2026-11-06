@@ -33,5 +33,11 @@ interface LegacyMigrationStatus {
      * 화면용 이전 상태. 새 서버 호출 없이 로컬 정보(DataStore의 uid 기반 완료 값, Room 데이터 유무, Worker 상태)로만 계산한다.
      * 기본값은 "이전 없음"이라 이 상태를 모르는 구현(테스트 대역 등)엔 영향이 없다.
      */
+    /**
+     * 이전에서 건너뛴(Firestore에 못 올린) 게시물 ID. Room에는 그대로 남아 있다. 이 게시물의 썸네일 파일은 서버에 문서가 없어도
+     * 고아가 아니다(지우면 복구할 수 없다).
+     */
+    suspend fun skippedPostIds(): Set<String> = emptySet()
+
     fun observePhase(): Flow<LegacyMigrationPhase> = flowOf(LegacyMigrationPhase.NOT_NEEDED)
 }

@@ -48,6 +48,11 @@ data class HomeUiState(
     val folderAssignSelectedFolderId: String? = null,
     /** 필터·검색과 무관하게 저장된 장소가 하나도 없는지 — 빈 상태 안내 카드용. 로딩 중 깜빡이지 않게 기본값은 false. */
     val hasNoSavedPlaces: Boolean = false,
+    /**
+     * 저장소·이전 상태에서 첫 값이 도착했는지. 도착 전(기본값)에는 목록 영역을 비워둔다 — 안 그러면 데이터가 오기 전 잠깐
+     * "저장된 장소가 없어요"가 보이고, 이전 대상이 있는 사용자는 그게 이전이 끝날 때까지 이어질 수 있다.
+     */
+    val isLoaded: Boolean = false,
     /** Room → Firestore 이전 상태. 이전 대상이 없으면 NOT_NEEDED라 화면에 아무 영향이 없다. */
     val migrationPhase: LegacyMigrationPhase = LegacyMigrationPhase.NOT_NEEDED,
     /** 1.5초 이상 이어질 때만 채워지는 안내 배너(깜빡임 방지). */

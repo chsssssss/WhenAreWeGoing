@@ -135,4 +135,17 @@ class RoomMigrationStatusImplTest {
         impl.await(NOT_NEEDED)
         assertEquals(true, impl.isComplete())
     }
+
+    @Test
+    fun 건너뛴_게시물_ID는_현재_uid의_기록에서만_돌려준다() = runBlocking {
+        seedRoom()
+        store.begin("uid-1", 1L)
+        store.saveProgress("uid-1", MigrationKind.POSTS, "p9", 3, listOf("POSTS:post-x:PERMISSION_DENIED", "PLACES:place-y:PERMISSION_DENIED"))
+        store.markCompleted("uid-1")
+
+        assertEquals(setOf("post-x"), status(Session("uid-1")).skippedPostIds())
+        assertEquals("다른 uid의 기록은 쓰지 않는다", emptySet<String>(), status(Session("uid-2")).skippedPostIds())
+        assertEquals("완료는 건너뛴 문서와 무관하다", true, status(Session("uid-1")).isComplete())
+        status(Session("uid-1")).await(NOT_NEEDED)
+    }
 }

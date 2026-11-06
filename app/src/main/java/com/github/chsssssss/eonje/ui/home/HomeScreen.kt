@@ -744,6 +744,7 @@ private fun PlaceListSheetContent(
                 isSearching = uiState.searchQuery.isNotBlank(),
                 hasNoSavedPlaces = uiState.hasNoSavedPlaces,
                 migrationActive = uiState.migrationPhase != LegacyMigrationPhase.NOT_NEEDED,
+                isLoaded = uiState.isLoaded,
                 onPlaceClick = onPlaceClick,
                 onOpenFolderPicker = onOpenFolderPicker,
                 onOpenGuide = onOpenGuide,
@@ -848,11 +849,16 @@ private fun PlaceCardList(
     isSearching: Boolean,
     hasNoSavedPlaces: Boolean,
     migrationActive: Boolean,
+    isLoaded: Boolean,
     onPlaceClick: (String) -> Unit,
     onOpenFolderPicker: (String) -> Unit,
     onOpenGuide: () -> Unit,
 ) {
-    val content = placeListContent(hasNoSavedPlaces, places.isEmpty(), migrationActive)
+    val content = placeListContent(hasNoSavedPlaces, places.isEmpty(), migrationActive, isLoaded)
+    if (content == PlaceListContent.LOADING) {
+        Box(modifier = Modifier.fillMaxSize())
+        return
+    }
     if (content == PlaceListContent.GUIDE_CARD) {
         // 시트를 Mid로 내려도 버튼까지 닿을 수 있게 스크롤로 감싼다 — nestedScroll이 남는 드래그는 시트로 넘긴다.
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {

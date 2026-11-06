@@ -50,7 +50,7 @@ object Events {
     /** 업데이트 후 Room → Firestore 이전을 이 uid로 새로 시작함(이어하기에선 안 찍힘). 숫자·종류만 남긴다. */
     const val ROOM_MIGRATION_STARTED = "room_migration_started"
 
-    /** 이전이 끝남. [Param.FOLDER_COUNT], [Param.PLACE_COUNT], [Param.POST_COUNT], [Param.DURATION_MS](처음 시작부터의 벽시계 시간). */
+    /** 이전이 끝남. [Param.FOLDER_COUNT], [Param.PLACE_COUNT], [Param.POST_COUNT], [Param.SKIPPED_COUNT](규칙 거부 등으로 건너뛴 문서 수), [Param.DURATION_MS](처음 시작부터의 벽시계 시간). */
     const val ROOM_MIGRATION_COMPLETED = "room_migration_completed"
 
     /** 이전 한 번의 시도가 실패해서 다시 시도하게 됨. [Param.ERROR_TYPE] = [MigrationError]. 오류 메시지·내용은 넣지 않는다. */
@@ -60,6 +60,7 @@ object Events {
         const val FOLDER_COUNT = "folder_count"
         const val PLACE_COUNT = "place_count"
         const val POST_COUNT = "post_count"
+        const val SKIPPED_COUNT = "skipped_count"
         const val DURATION_MS = "duration_ms"
         const val ERROR_TYPE = "error_type"
         const val FILE_COUNT = "file_count"

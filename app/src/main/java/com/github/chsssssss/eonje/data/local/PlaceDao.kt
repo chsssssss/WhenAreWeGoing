@@ -39,4 +39,7 @@ interface PlaceDao {
 
     @Query("SELECT COUNT(*) FROM places")
     suspend fun count(): Int
+
+    @Query("SELECT id FROM places WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun idsAfter(afterId: String, limit: Int): List<String>
 }
