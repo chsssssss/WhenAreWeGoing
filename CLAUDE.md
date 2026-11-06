@@ -7,7 +7,7 @@
 - **핵심 흐름**: 인스타에서 공유 버튼 → URL만 즉시 저장(화면 없음) → 나중에 앱에서 가게 확정 → 외식할 때 지도에서 꺼내 봄
 - **설계 원칙 1**: 저장은 절대 실패하지 않는다. 가게 이름을 못 찾아도, 네트워크가 끊겨도 URL은 저장된다
 - **설계 원칙 2**: 자동 인식(캡션 파싱)은 최적화이지 필수 기능이 아니다. 실패해도 앱은 정상 동작한다
-- **설계 원칙 3**: 자체 서버는 두지 않고, 사용자가 늘어도 개발자 비용이 비례해서 늘지 않는 구조로 간다. 캡션 파싱은 Firebase AI Logic(Gemini 무료 티어)과 온디바이스 Gemini Nano를 쓰고, 지도 검색은 클라이언트에서 직접 호출한다. 유일한 예외는 Firebase Cloud Functions 함수 하나(게시물 URL로 계정명·캡션을 Apify로 대신 조회) — 직접 운영하는 서버는 아니지만 커스텀 백엔드 코드가 있다는 점은 예외이며, Apify 토큰을 앱에 내장하지 않기 위한 최소한의 게이트웨이다
+- **설계 원칙 3**: 직접 운영하는 서버는 두지 않는다. 데이터의 원본은 Firestore(서버리스)이고, 캡션 파싱은 Firebase AI Logic(Gemini 무료 티어)과 온디바이스 Gemini Nano를 쓰며, 지도 검색은 클라이언트에서 직접 호출한다. 커스텀 백엔드 코드는 Firebase Cloud Functions 함수 하나(게시물 URL로 계정명·캡션을 Apify로 대신 조회)뿐이고, Apify 토큰을 앱에 내장하지 않기 위한 최소한의 게이트웨이다. **비용 원칙은 "사용량에 비례하지 않는 구조"에서 "무료 한도 안에서 운영하고 예산 알림으로 감시"로 바뀌었다** — Firestore는 사용량 비례 과금이라서(2026-11 결정: 이후 iOS 앱과 친구 공유를 붙이려면 데이터가 서버에 있어야 한다), 무료 한도를 넘기지 않는지를 예산 알림으로 본다. 자세한 건 "비용·서버 구조" 참고
 - **설계 원칙 4**: 앱의 핵심 동작은 "인스타 보다가 마음에 드는 것만 공유"다. 계정을 통째로 팔로우해서 전부 자동 수집하는 기능(과거 F3)은 이 사용 패턴과 안 맞아서 걷어냈다 — 자세한 배경은 "개발 단계" 5단계 참고
 
 ## 프로젝트 정보
@@ -25,15 +25,17 @@
 | UI | Jetpack Compose, Material 3 |
 | 아키텍처 | MVVM + UDF, StateFlow 기반 단일 UiState |
 | DI | Hilt |
-| 로컬 DB | Room |
-| 네트워크 | Retrofit + OkHttp + kotlinx.serialization (카카오 로컬) + Firebase Functions(계정명·캡션 조회) |
+| 데이터 원본 | **Firestore**(named FirebaseApp `wherewegoing`, 영구 캐시 20MB) — 개인 데이터는 전부 `users/{uid}` 아래 |
+| 로그인 | Firebase Auth 익명 로그인(named 앱 `wherewegoing`). 계정 UI는 없다 |
+| 로컬 DB | Room — **읽기 전용 레거시**. 업데이트 전 사용자의 데이터를 Firestore로 1회 옮기려고 남겨둔 것(다음 버전에서 제거 예정) |
+| 네트워크 | Retrofit + OkHttp + kotlinx.serialization (카카오 로컬) + Firebase Functions(계정명·캡션 조회) + Firestore |
 | 캡션 파싱 (AI) | 지원 기기는 ML Kit GenAI(Gemini Nano) 온디바이스 우선 시도, 아니면 Firebase AI Logic(Gemini Flash 무료 티어, App Check 필수)으로 폴백 |
 | 비동기 | Coroutines + Flow |
 | 백그라운드 | WorkManager |
 | 지도 | 카카오맵 SDK (카카오 로컬 API와 좌표계 통일) |
 | 네비게이션 | Navigation Compose |
 | 이미지 | Coil |
-| 백엔드 | 원칙적으로 없음. 모든 API는 클라이언트에서 직접 호출하되, 게시물 계정명·캡션 조회만 Firebase Cloud Functions 함수 하나(Apify 토큰 보관용 게이트웨이)를 거친다 (아래 "비용·서버 구조" 참고) |
+| 백엔드 | 직접 운영하는 서버 없음. 데이터는 Firestore(보안 규칙 `firestore.rules`: 본인 `users/{uid}`만 읽기·쓰기), 게시물 계정명·캡션 조회만 Firebase Cloud Functions 함수 하나(Apify 토큰 보관용 게이트웨이)를 거친다 (아래 "비용·서버 구조" 참고) |
 
 *캡션 파싱은 실기기(Galaxy Note9, API 29)에서 공유 → Apify 캡션 조회 → Gemini 파싱 → 카카오 검색 → 자동 확정까지 전 과정 검증 완료(2026-09-12). Firebase AI Logic은 App Check(디버그: Debug Provider, 릴리스: Play Integrity)가 없으면 요청 자체를 거부하므로 `EonjeApplication`에서 필수로 초기화한다. Gemini는 Blaze(결제 계정 연결) 프로젝트에서 호출하면 무료 티어 대신 Prepay(선불) 결제로 전환돼버려서, Gemini 전용 프로젝트(`fir-gemini-706d3`, Spark 유지)를 Apify 게이트웨이 프로젝트(`wherewegoing-a5493`, Blaze)와 분리해뒀다 — 자세한 내용은 "비용·서버 구조" 참고.*
 
@@ -41,16 +43,20 @@
 
 ```
 com.github.chsssssss.eonje/
-├─ di/                 Hilt 모듈
+├─ di/                 Hilt 모듈 (RepositoryModule: 기본 바인딩은 Firestore, @RoomStore는 이전용 Room 구현 / FirestoreModule: named 앱 wherewegoing)
 ├─ data/
-│  ├─ local/           Room (Entity, Dao, Database)
-│  ├─ remote/          Retrofit(Kakao) + Firebase Functions/AI Logic 앱 이름 상수
-│  ├─ repository/      Repository 구현체
-│  └─ worker/          WorkManager
+│  ├─ firestore/       Firestore 저장소 구현 4개, AuthSession(익명 로그인), FirestoreMappers(도메인 ↔ 문서), FirestoreSetup(캐시 설정·에뮬레이터 연결 순서)
+│  ├─ migration/       Room → Firestore 1회 이전 (RoomToFirestoreMigrator, 진행 기록 RoomMigrationStateStore, RoomMigrationStatusImpl)
+│  ├─ local/           Room(Entity, Dao, Database — 레거시, 읽기 전용), ThumbnailStore
+│  ├─ mapper/          Room Entity ↔ 도메인 모델
+│  ├─ remote/          Retrofit(Kakao) + Firebase Functions/AI Logic 앱 이름 상수(FirebaseApps)
+│  ├─ repository/      Firestore가 아닌 Repository 구현체 + Room 구현(RoomXxxRepository, 이전용)
+│  └─ worker/          WorkManager (CaptionParsingWorker, SaveSharedPostWorker, RoomMigrationWorker, InboxReminderWorker, ThumbnailMaintenanceWorker)
 ├─ domain/
-│  ├─ model/           도메인 모델
-│  ├─ repository/      Repository 인터페이스
-│  └─ usecase/
+│  ├─ model/           도메인 모델 (SavedPost, Place, Folder, ExtractedCandidate … — 저장소 구현에 의존하지 않는 순수 모델)
+│  ├─ repository/      Repository 인터페이스 + UserSession, PostWorkScheduler, LegacyMigrationStatus
+│  ├─ usecase/         SaveSharedPostUseCase, MatchPostUseCase
+│  └─ util/            InstagramUrlParser, ShareKey
 ├─ ui/
 │  ├─ home/            Screen + ViewModel + State — 지도, 커스텀 바텀시트(목록/상세 모드), 폴더 관리
 │  ├─ inbox/
@@ -61,6 +67,8 @@ com.github.chsssssss.eonje/
 │  └─ theme/
 ├─ share/              ShareReceiverActivity
 └─ widget/             홈 화면 위젯 '오늘의 맛집' (Glance, 10단계 참고)
+scripts/start-emulators.sh   Firebase Emulator Suite(Auth+Firestore) 실행 (아래 "에뮬레이터" 참고)
+firestore.rules / firestore.indexes.json   보안 규칙·인덱스 (배포는 `firebase deploy --only firestore`, CLI에서 직접)
 ```
 
 ## 데이터 모델
@@ -68,6 +76,29 @@ com.github.chsssssss.eonje/
 게시물(SavedPost)과 장소(Place)는 다대다 관계다.
 게시물 하나에 장소가 여럿일 수 있고(리스트형 게시물),
 같은 가게가 여러 게시물에 나올 수도 있다.
+
+### 원본: Firestore (`users/{uid}` 아래, iOS에서도 쓸 수 있게 플랫폼 중립)
+
+```
+users/{uid}/folders/{folderId}   name, color, iconKey, createdAt
+users/{uid}/places/{placeId}     name, address, latitude, longitude, kakaoPlaceId, category, status, createdAt, resolvedAt, folderId(null=미분류)
+users/{uid}/posts/{postId}       instagramUrl, shortcode, caption, status, extractedCount, createdAt, unresolvedReason, placeIds[], candidates[]
+```
+
+- enum은 이름 문자열, 시간은 기기에서 만든 Long 밀리초(serverTimestamp 안 씀), 색은 ARGB 정수. **문서 ID는 UUID 문자열**이다 — 직접 공유하면 `ShareKey.postId(shortcode)`에서 만든 결정적 UUID, 장소·폴더는 `UUID.randomUUID()`, Room에서 옮긴 것은 Room의 UUID 그대로.
+- **게시물-장소 연결은 게시물 문서의 `placeIds` 배열**이다(장소 문서엔 게시물 정보가 없다). **검색 후보는 별도 컬렉션이 아니라 게시물 문서의 `candidates` 배열**이다(정리하면 사라지는 임시 데이터, 항목당 최대 5개라 문서 크기 한도 1MiB에 한참 못 미친다). 비어 있는 배열은 필드를 만들지 않는다.
+- 문서에 없는 것: `memo`(기능 제거됨), `thumbnailUrl` — 썸네일은 인스타 CDN을 `ThumbnailStore`가 기기에 받아둔 `{postId}.jpg`이고, 읽을 때 파일이 있으면 도메인 `SavedPost.thumbnailUrl`을 `file://`로 채우고 없으면 null이다(다른 기기에선 썸네일 없음을 허용, Storage는 안 쓴다).
+- 필드 ↔ 도메인 변환은 `data/firestore/FirestoreMappers.kt` 한 곳이다. 이전된 데이터와 새로 만든 데이터의 문서 모양이 달라지면 안 되므로 새 필드는 여기서만 추가한다.
+- 친구 공유는 별도 최상위 컬렉션으로 추가할 예정이라 이 구조가 막지 않는다(보안 규칙도 그때 따로 추가).
+- 쿼리: 복합 인덱스가 필요한 쿼리는 없다(`firestore.indexes.json`은 비어 있는 게 맞다). 미확정 게시물은 `status != RESOLVED`(단일 필드 자동 인덱스).
+
+### 도메인 모델 (`domain/model`)
+
+화면·유스케이스·Repository 인터페이스는 도메인 모델(`SavedPost`, `Place`, `Folder`, `ExtractedCandidate` …)만 안다. Room Entity나 Firestore 문서 타입이 위로 새지 않는다. 변환은 `data/mapper`(Room)와 `data/firestore/FirestoreMappers.kt`(Firestore)에 있다.
+
+### 레거시: Room 스키마 (v9, 읽기 전용 — 이전 전용으로만 남아 있다)
+
+아래는 업데이트 전 사용자의 데이터가 들어 있는 Room 스키마다. **고정(v9, `app/schemas/.../9.json`)이고 이번 버전에서 바꾸거나 지우지 않는다.** 앱 코드는 Firestore만 읽고 쓰며, Room은 `RoomToFirestoreMigrator`만 읽는다.
 
 ```kotlin
 @Entity(tableName = "saved_posts")
@@ -161,13 +192,17 @@ enum class UnresolvedReason {
 - URL에서 shortcode 추출: `/p/{code}/`, `/reel/{code}/`, `/tv/{code}/` — 인스타 게시물 링크만 받는다. 다른 URL(프로필·외부 사이트)은 자동 매칭을 시작할 수 없어 저장하지 않고 "인스타그램 게시물 링크를 찾을 수 없어요" 토스트만 띄운다
 - `http://`, `m.instagram.com`, `instagr.am` 형태도 받아서 `https://www.instagram.com/{p|reel|tv}/{code}/`로 표준화해 저장한다(쿼리 `?igsh=...`·프래그먼트 제거). `fetchInstagramMeta`가 이 형태만 받기 때문 — `InstagramUrlParser.findPostUrl`
 - 중복 확인과 저장은 프로세스 안에서 `Mutex`로 직렬화한다(연달아 공유 시 중복 생성 방지)
-- Room에 SavedPost 생성 (동기 처리, 밀리초 단위)
-- 이후 WorkManager로 위임
+- **로그인돼 있으면**(`UserSession.isSignedIn()`) 기존 경로: 게시물 문서를 쓰고 로컬 캐시에 반영된 것까지 확인한 뒤(밀리초) `finish()`. 서버 응답은 기다리지 않는다 — 오프라인에서도 저장이 멈추지 않는다
+- **로그인 전이면**(설치 직후 오프라인) **기다리지 않고** URL을 `SaveSharedPostWorker`(WorkManager 입력 데이터, 네트워크 조건)에 맡긴다. Worker가 직접 익명 로그인을 시도하고, 재시도 횟수 상한 없이 지수 백오프로 다시 시도한다(상한에서 포기하면 URL이 사라지므로). 앱 프로세스가 죽어도 WorkManager DB에 남는다
+- 게시물 ID·고유 작업 이름·중복 확인은 모두 공유 키(`ShareKey`: shortcode, 없으면 URL 해시)에서 나온다 — 직접 저장과 Worker 저장이 겹쳐도 같은 문서가 된다
+- 토스트: 온라인이면 "저장했어요", 오프라인이면 "저장했어요. 인터넷에 연결되면 정리를 시작해요"
+- 이후 `PostWorkScheduler`로 캡션 조회(F2)를 고유 작업(KEEP)으로 예약 — Apify를 중복 호출하지 않는다
 
 ### F2. 장소 추출 및 매칭 (WorkManager)
 
 1. **계정명·캡션 조회** — Firebase Cloud Function `fetchInstagramMeta` → Apify `apify/instagram-scraper` 액터로 게시물 URL만으로 캡션 원문(안 잘림) + 대표 이미지 URL을 받는다. 계정을 등록하거나 추적하지 않는다 — 이 게시물 하나를 푸는 데 그걸로 충분하다
 1.5. 대표 이미지는 `ThumbnailStore`로 기기에 다운로드해서 `thumbnailUrl`에 file:// 경로로 저장한다 — 인스타 CDN의 media_url은 시간이 지나면 만료돼서 원본 URL을 그대로 저장해두면 나중에 인박스·상세화면에서 사진이 안 보이게 된다. 다운로드 실패 시엔 원본 URL을 그대로 폴백(최선 노력, F2 실패로 취급하지 않음). 게시물 삭제 시 로컬 파일도 함께 정리된다(`SavedPostRepositoryImpl.deleteByIds`)
+1.9. 게시물이 아직 Firestore에 없는데 Room → Firestore 이전이 안 끝났으면(업데이트 전에 예약된 작업이 먼저 돈 경우) `MatchPostResult.WaitForMigration`으로 **재시도 횟수를 쓰지 않고** 기다린다. 이전이 끝났는데도 없으면 삭제된 게시물이라 조용히 끝낸다
 2. 실패(비공개 게시물, Apify 오류, Cloud Run 일시 장애 등) → `MatchPostResult.Retry`로 WorkManager 지수 백오프 재시도. 재시도 한도(5회) 넘기면 `UNRESOLVED(NETWORK_ERROR)`
    - 캡션을 받아온 뒤 파싱·카카오 검색 단계에서 재시도하는 경우엔 저장해둔 캡션·로컬 썸네일을 그대로 쓰고 Apify를 다시 부르지 않는다(호출마다 크레딧 소모). 2차(이미지) 파싱도 원격 CDN URL 대신 로컬 썸네일을 쓴다
 3. 캡션이 비어있으면 `UNRESOLVED(PLACE_NOT_FOUND)`
@@ -199,6 +234,11 @@ enum class UnresolvedReason {
 - 사용자가 폴더를 자유롭게 생성. 프리셋 없음 (태그와 달리 폴더명은 "성수 맛집", "회사 근처"처럼 사용자마다 쓰임이 달라 프리셋 의미 없음)
 - 폴더 생성 시 지도 마커에 쓸 색상(채도 높은 8색)과 아이콘(이모지)을 함께 고른다 — `AddFolderContent`에 실시간 마커 미리보기 포함
 - 장소 상세화면 헤더의 마커 버튼을 누르면 체크박스형 폴더 변경 시트(`FolderAssignSheetContent`)가 뜬다. 체크만으로는 안 바뀌고 저장 버튼을 눌러야 반영되며, 아무 것도 체크 안 하고 저장하면 배정이 지워진다("저장삭제")
+- **삭제 연쇄 로직의 위치**(DAO가 아니라 Firestore 저장소 구현에 있다 — 문서 DB는 외래 키가 없어서 코드가 대신한다):
+  - 폴더 삭제 = `FirestoreFolderRepository.delete`: 그 폴더의 장소를 전부 `folderId = null`로 바꾸는 쓰기를 먼저, 폴더 문서 삭제를 마지막에 WriteBatch(499개씩 나눠 커밋)로 보낸다. 중간에 끊겨도 "삭제된 폴더를 가리키는 장소"는 안 생긴다
+  - 장소 삭제 = `FirestorePlaceRepository.delete`: 장소 문서 삭제 + 그 장소를 가리키는 게시물의 `placeIds`에서 `arrayRemove`(WriteBatch). 게시물은 남는다
+  - 게시물 삭제 = `FirestoreSavedPostRepository.deleteByIds`: 문서 삭제 + 기기의 `{postId}.jpg` 삭제(`ThumbnailStore.deleteAll`)
+  - 게시물 상태 변경 = `FirestoreSavedPostRepository.updateStatus`: `UNRESOLVED`로 바꿀 때 `extractedCount`를 같은 쓰기에서 0으로 되돌린다
 - 폴더 삭제는 세 곳에서 가능하다 — ① 목록 카드의 폴더 칩으로 여는 기존 폴더 피커, ② 위의 폴더 변경 체크박스 시트, ③ 홈 목록 화면 폴더 탭 줄의 칩을 길게 누르기. 어느 경로든 확인 다이얼로그를 거치고, 삭제되면 그 폴더의 장소는 전부 미분류로 이동한다
 
 ## 예외 처리 원칙
@@ -214,6 +254,8 @@ enum class UnresolvedReason {
 | 중복 공유 | 기존 레코드 유지, 신규 생성 안 함 |
 | 이미 저장된 가게 | kakaoPlaceId 일치 시 게시물만 연결 |
 | 네트워크 없음 | WorkManager 지수 백오프 재시도 |
+| 공유 시점에 로그인 전(설치 직후 오프라인) | URL을 `SaveSharedPostWorker`에 맡겨 로그인 후 저장 — 유실 없음 |
+| Room → Firestore 이전 도중 게시물을 못 찾음 | 이전이 끝날 때까지 횟수 없이 대기(`WaitForMigration`) |
 
 ## 비용·서버 구조
 
@@ -224,11 +266,21 @@ enum class UnresolvedReason {
 | 계정명·캡션 조회 (F2) | Firebase Cloud Function `fetchInstagramMeta`(App Check 필수) → Apify `apify/instagram-scraper` 액터. 실패하면 WorkManager가 재시도하고, 그래도 안 되면 UNRESOLVED로 조용히 종료 | Apify 무료 티어 월 $5 크레딧 ≈ 1,850건, 그 이상은 건당 $0.0027 (2026-09 기준). 캐시 없이 공유할 때마다 호출됨 |
 | 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini Flash 무료 티어 호출 (App Check 필수, Gemini 전용 프로젝트) | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
 | 카카오 로컬 검색 | 클라이언트에서 REST API 직접 호출, 카카오 개발자 콘솔에서 앱 서명(SHA) 기반 키 제한 설정 | 카카오 무료 쿼터 내 |
+| Firestore(데이터 원본) | `wherewegoing-a5493`(Blaze)의 Firestore(서울 리전, 프로덕션 모드로 만들 예정 — 콘솔 작업은 11단계 참고). 쓰기는 호출만 하고 서버 응답을 기다리지 않는다. 리스너는 `shareIn(WhileSubscribed(5000))`로 화면을 벗어나면 해제, 위젯·`InboxReminderWorker`는 `Source.CACHE`로 캐시만 읽는다(서버 호출 금지). 영구 캐시 20MB 상한(`FirestoreSetup`) | 무료 한도(하루 읽기 5만·쓰기 2만·삭제 2만, 1GiB 저장) 안에서 운영, **예산 알림으로 감시**. 앱을 한 번 열 때 읽기는 대략 장소 수 + 확정 게시물 수 + 미확정 수 + 폴더 수(캐시가 유효하면 바뀐 문서만, 백그라운드 30분 넘으면 처음부터). Room 이전은 사용자당 1회: 쓰기 N건 + 읽기 약 N/30건 |
 | Cloud Functions(Apify 게이트웨이) 인프라 | Cloud Run 2세대 위에서 실행. `wherewegoing-a5493`은 Secret Manager(Apify 토큰 보관)를 쓰려고 Blaze로 전환함 | Blaze 무료 티어: 월 200만 건 호출, 40만 GB-초, 5GB 아웃바운드까지 무료. 컨테이너 이미지는 배포 시 1일 뒤 자동 삭제 정책으로 스토리지 비용 억제 |
 
 **API 키를 앱에 직접 내장하지 않는 이유** — APK는 디컴파일 가능해서, 내장된 키는 노출되면 누구나 그 키로 무제한 요청을 보낼 수 있고 비용은 키 소유자에게 청구된다. Firebase AI Logic은 이 문제를 게이트웨이 구조로 해결해서, 서버를 직접 짜지 않아도 클라이언트에서 안전하게 Gemini를 호출할 수 있다. 카카오는 앱 서명 기반 키 제한으로, Apify 토큰은 Firebase Cloud Function(Secret Manager) 뒤에 숨겨서 같은 문제를 해결한다.
 
 **Gemini는 결제 계정과 분리된 프로젝트에 둔다** — Firebase AI Logic(Gemini Developer API)의 진짜 무료 티어는 결제 계정이 전혀 연결되지 않은 프로젝트에서만 유지된다. 프로젝트가 한 번 "Prepay(선불)" 상태로 전환되면 무료 티어로 자동 복귀가 안 되고 선불 잔액(최소 $10)이 있어야만 호출된다. 그래서 Apify 게이트웨이(Secret Manager 때문에 Blaze 필수인 `wherewegoing-a5493`)와 Gemini(`fir-gemini-706d3`, Spark 유지)를 완전히 다른 프로젝트로 분리했다. `EonjeApplication`에서 Gemini 프로젝트를 기본(default) FirebaseApp으로, `wherewegoing-a5493`을 이름 있는(named) FirebaseApp(`WHEREWEGOING_FIREBASE_APP_NAME`)으로 각각 초기화하고 App Check도 프로젝트별로 따로 설치한다 — Firebase AI Logic SDK가 이름과 무관하게 "기본 FirebaseApp"만 찾기 때문에 이 순서가 중요하다(`data/remote/FirebaseApps.kt` 참고).
+
+**Firestore·Auth는 반드시 named FirebaseApp `wherewegoing`(Blaze)에 붙인다** — `FirebaseFirestore.getInstance(app)`, `FirebaseAuth.getInstance(app)`로 앱 인스턴스를 명시한다(`di/FirestoreModule`). `Firebase.firestore`·`Firebase.auth` 같은 KTX 단축형은 **default 앱(Gemini 전용, Spark)에 붙으므로 쓰지 않는다.** Gemini 프로젝트(`fir-gemini-706d3`)를 Blaze로 올리는 변경도 하지 않는다(위 "Gemini는 결제 계정과 분리된 프로젝트에 둔다" 참고). Firestore 설정(영구 캐시)은 첫 사용 전에 `EonjeApplication`에서 지정해야 하고, 순서는 **캐시 설정 → (디버그·옵션) 에뮬레이터 연결**이다 — `useEmulator`가 설정을 덮어쓰기 때문이다(`FirestoreSetup.configure`).
+
+**에뮬레이터 (Auth + Firestore)** — 개발·테스트는 Firebase Emulator Suite로 한다(운영 데이터에 쓰지 않는다).
+- 실행: `scripts/start-emulators.sh`(= `firebase emulators:start --only auth,firestore`). **firebase-tools 15는 Java 21 이상이 필요하다** — 기본 `JAVA_HOME`이 17이어도 스크립트가 JDK 21을 찾아 쓴다(`/usr/libexec/java_home -v 21`). 프로젝트는 `--project`를 주지 않으면 `.firebaserc`의 default(`wherewegoing`)라서 **Auth와 Firestore가 앱과 같은 프로젝트 ID로 모인다**(`demo-eonje`로 띄우면 Auth는 그 ID, Firestore는 앱 ID로 갈라져 REST 조회가 헷갈린다). 포트는 Auth 9099, Firestore 8080(`firebase.json`)
+- 앱 연결: 디버그 빌드를 `-PfirebaseEmulator=true`로 빌드하면 Auth·Firestore가 에뮬레이터에 붙는다(안드로이드 에뮬레이터에서 호스트는 `10.0.2.2`, 실기기는 `adb reverse` 후 `-PfirebaseEmulatorHost=localhost`). 릴리스 빌드엔 이 연결 코드가 들어가지 않는다(`src/release`의 `connectFirebaseEmulators`는 아무것도 안 한다)
+- 에뮬레이터 데이터는 메모리에만 있어서 에뮬레이터를 다시 켜면 사라진다. 에뮬레이터 REST 조회는 `Authorization: Bearer owner`로 보안 규칙을 우회한다
+- 계측 테스트(`connectedDebugAndroidTest`)는 에뮬레이터가 떠 있어야 Firestore 테스트가 돈다(안 떠 있으면 건너뛴다 — 통과로 착각하지 말 것). `FirebaseEmulatorEnv`가 FirebaseApp을 프로세스에서 한 번만 만든다
+- AVD는 데이터 파티션이 작으면 `INSTALL_FAILED_INSUFFICIENT_STORAGE`로 설치가 막힌다. 검증용 AVD(`Eonje_Test`, 데이터 10GB)를 따로 두고 쓴다(기존 AVD는 초기화하지 않는다)
 
 **Claude API는 쓰지 않는다** — 무료 티어가 없어 사용량에 비례해 계속 비용이 발생하므로 이 프로젝트의 캡션 파싱에는 적합하지 않다. GPT API도 동일한 이유로 제외.
 
@@ -365,12 +417,32 @@ enum class UnresolvedReason {
 - [x] API 36 에뮬레이터(릴리스 빌드)에서 스플래시 라이트/다크, 위젯 추가·빈 상태·장소 탭·삭제 후 갱신·폴더 변경·다크·크기 조절·이벤트 확인, Galaxy Note9(디버그)에서 인박스 확인. versionCode 5로 `bundleRelease`
 - **미확인**: API 30 이하 스플래시·위젯 모양, 실제 자정 넘김 시 워커 실행, 기존 위젯을 둔 채 앱 업데이트하는 경로
 
+### 11단계 — Firestore를 원본으로 전환 (완료, 2026-11-06, 브랜치 `feature/firestore`)
+
+이후 iOS 앱과 친구 공유를 붙이려면 데이터가 서버에 있어야 해서, Room 대신 Firestore를 원본으로 바꿨다. 세 덩어리로 나눠 진행했다.
+
+- [x] **도메인 모델 분리**: Room Entity가 화면·유스케이스로 새던 것을 `domain/model`의 순수 모델로 분리, Repository 인터페이스를 도메인 모델 기준으로 정리. Room 구현은 `RoomXxxRepository`로 이름을 바꿔 남기고 Hilt에 `@RoomStore`로 등록
+- [x] **Firestore 구현**: 저장소 4개(`data/firestore`), 익명 로그인(`AuthSession`), 쓰기는 await하지 않음, 리스너는 화면 범위에만. 로그인 전 공유는 `SaveSharedPostWorker`로 유실 없이 보관(F1 참고). 에뮬레이터 연결(디버그 전용)과 계측 테스트
+- [x] **Room → Firestore 1회 이전** (`data/migration`, `RoomMigrationWorker`):
+  - 앱 시작 때마다 예약(네트워크 조건, 지수 백오프, REPLACE). 이 uid로 이미 끝났으면 DataStore 한 번 읽고 바로 끝난다. Room이 비어 있으면(신규 설치) 이전 없이 바로 완료 표시
+  - 순서 폴더 → 장소 → 게시물. 배치(499개)마다 **서버에 이미 있는 id 확인(덮어쓰지 않음) → 없는 문서만 쓰기 → 서버 확정까지 대기 → 체크포인트 저장**. 끊겨도 확정된 곳부터 이어가고, 이미 옮겨진 문서는 사용자가 Firestore 쪽에서 고쳤어도 Room의 옛 값으로 덮지 않는다
+  - 진행 기록은 **uid와 함께** DataStore(`room_migration`)에 저장한다. 자동 백업이 이 파일을 새 기기로 복원해도 거기서 로그인된 uid가 다르면 처음부터 다시 이전한다(같은 uid면 이미 끝난 것). 백업에서 제외하지 않는다 — uid와 짝으로 판단하므로 안전하고, 제외하면 같은 uid에서 불필요한 읽기가 생긴다
+  - 필드 변환은 Firestore 저장소와 같은 매퍼를 쓴다. memo는 옮기지 않고, 썸네일 파일은 옮기지 않지만 문서 ID가 Room의 UUID 그대로라서 `{postId}.jpg`가 그대로 연결된다(원격 URL만 저장돼 있던 썸네일은 만료되는 값이라 옮기지 않는다)
+  - **Room 데이터는 지우지 않는다**(정리는 다음 버전). 서버에 쓰기가 확정되지 않은 상태에서는 어떤 경우에도 지우지 않는다
+  - **이전이 끝나기 전에 막아둔 위험 3가지**: ① 썸네일 고아 정리(`ThumbnailMaintenance`)는 이전이 끝난 뒤에만 한다 — 일부만 옮겨진 상태에서 ID 목록에 없다고 지우면 다시 받을 수 없는 썸네일을 잃는다 ② 캡션 작업은 게시물이 없고 이전이 안 끝났으면 횟수 없이 대기한다(`WaitForMigration`) ③ 공유 중복 확인은 이전이 끝나기 전엔 Room도 shortcode로 본다
+  - Analytics: `room_migration_started`(이어하기에선 안 찍힘)/`room_migration_completed`(폴더·장소·게시물 개수, 처음 시작부터의 소요 시간)/`room_migration_failed`(`error_type`: network·permission·unknown). 내용은 넣지 않는다
+  - 알려진 한계: 이전 도중 사용자가 같은 이름의 폴더를 새로 만들면 이름이 겹칠 수 있다. 이전 도중 지운 장소가 아직 안 옮겨진 게시물의 `placeIds`에 남을 수 있다(읽는 쪽이 무시하므로 화면엔 안 보인다)
+- **Firestore 콘솔에서 직접 할 일**(코드로 안 됨): 서울 리전 프로덕션 모드 DB 생성, Authentication 익명 로그인 켜기, 예산 알림, 규칙·인덱스 배포(`firebase deploy --only firestore`)
+- **알려진 위험(2단계부터)**: `cachedPostIds()`(썸네일 고아 정리)는 Firestore **캐시**에서 ID를 읽는다. 캐시가 20MB 상한으로 정리(GC)돼 일부 게시물이 캐시에서 빠지면 그 썸네일이 고아로 오판돼 지워질 수 있다. 문서가 작아 거의 안 일어나지만, 캐시 상한을 줄이거나 문서를 크게 만들면 다시 봐야 한다
+
 ## 코딩 컨벤션
 
 - 각 화면은 단일 UiState data class를 StateFlow로 노출
 - 이벤트성 처리(토스트, 네비게이션)는 Channel 또는 SharedFlow로 분리
 - Repository는 domain 레이어에 인터페이스, data 레이어에 구현체
 - 모든 네트워크/DB 작업은 코루틴. UI 레이어에서 직접 호출 금지
-- **Room 스키마 변경 시 반드시 마이그레이션 추가** — 1.0 출시 기준 스키마는 v9(`app/schemas/.../9.json`, git 관리). 파괴적 마이그레이션(`fallbackToDestructiveMigration`)은 제거했으므로, `version`을 올리고 `Migration`/`AutoMigration`을 빠뜨리면 앱 시작 시 크래시로 드러난다(데이터를 조용히 지우지 않게 하려는 의도)
+- **Firestore**: named 앱 `wherewegoing`에만 붙인다(위 "비용·서버 구조"). 쓰기 Task는 await하지 않는다(오프라인에서 멈춘다) — 화면은 리스너로 갱신된다. 백그라운드 Worker·위젯은 `Source.CACHE`로만 읽고, 마이그레이션처럼 서버 확정이 필요한 Worker만 await한다. 문서 필드는 `FirestoreMappers`에서만 정한다. 에러·로그엔 작업 이름과 오류 종류만 남기고 문서 경로·내용은 남기지 않는다
+- **빌드 검증은 종료 코드로 한다** — `grep`으로 걸러 보면 컴파일 에러를 놓친다(실제로 놓쳐서 깨진 상태로 커밋한 적이 있다). `assembleDebug`, `assembleRelease`, `testDebugUnitTest`, `compileDebugAndroidTestKotlin`, 에뮬레이터를 띄운 `connectedDebugAndroidTest`를 단계마다 돌린다
+- **Room 스키마(레거시, v9)는 이번 버전에서 바꾸지 않는다. 바꿔야 한다면 반드시 마이그레이션 추가** — 1.0 출시 기준 스키마는 v9(`app/schemas/.../9.json`, git 관리). 파괴적 마이그레이션(`fallbackToDestructiveMigration`)은 제거했으므로, `version`을 올리고 `Migration`/`AutoMigration`을 빠뜨리면 앱 시작 시 크래시로 드러난다(데이터를 조용히 지우지 않게 하려는 의도)
 - **릴리스 로그에 URL·캡션·가게 이름을 남기지 않는다** — OkHttp `HttpLoggingInterceptor`는 `BuildConfig.DEBUG`일 때만 붙인다(BASIC도 요청 URL 전체, 즉 카카오 검색어를 남김)
 - **광고 ID 권한은 매니페스트에서 제거해둔 상태** — Firebase Analytics가 `AD_ID`/`ACCESS_ADSERVICES_*` 권한을 자동 추가하므로 `tools:node="remove"`로 빼고 `google_analytics_adid_collection_enabled=false`로 수집도 끈다. Play Console 광고 ID 신고는 "사용 안 함"과 일치해야 한다
