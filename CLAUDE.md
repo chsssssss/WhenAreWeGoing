@@ -35,7 +35,7 @@
 | 지도 | 카카오맵 SDK (카카오 로컬 API와 좌표계 통일) |
 | 네비게이션 | Navigation Compose |
 | 이미지 | Coil |
-| 백엔드 | 직접 운영하는 서버 없음. 데이터는 Firestore(보안 규칙 `firestore.rules`: 본인 `users/{uid}`만 읽기·쓰기), 게시물 계정명·캡션 조회만 Firebase Cloud Functions 함수 하나(Apify 토큰 보관용 게이트웨이)를 거친다 (아래 "비용·서버 구조" 참고) |
+| 백엔드 | 직접 운영하는 서버 없음. 데이터는 Firestore(보안 규칙 `firestore.rules`: 본인 `users/{uid}`의 folders·places·posts만 읽기·쓰기·삭제, 그 밖의 경로는 전부 거부, 쓴 뒤의 문서 전체에 필드 허용 목록·길이·enum·좌표·배열 크기 검증), 게시물 계정명·캡션 조회만 Firebase Cloud Functions 함수 하나(Apify 토큰 보관용 게이트웨이)를 거친다 (아래 "비용·서버 구조" 참고) |
 
 *캡션 파싱은 실기기(Galaxy Note9, API 29)에서 공유 → Apify 캡션 조회 → Gemini 파싱 → 카카오 검색 → 자동 확정까지 전 과정 검증 완료(2026-09-12). Firebase AI Logic은 App Check(디버그: Debug Provider, 릴리스: Play Integrity)가 없으면 요청 자체를 거부하므로 `EonjeApplication`에서 필수로 초기화한다. Gemini는 Blaze(결제 계정 연결) 프로젝트에서 호출하면 무료 티어 대신 Prepay(선불) 결제로 전환돼버려서, Gemini 전용 프로젝트(`fir-gemini-706d3`, Spark 유지)를 Apify 게이트웨이 프로젝트(`wherewegoing-a5493`, Blaze)와 분리해뒀다 — 자세한 내용은 "비용·서버 구조" 참고.*
 
@@ -88,7 +88,7 @@ users/{uid}/posts/{postId}       instagramUrl, shortcode, caption, status, extra
 - enum은 이름 문자열, 시간은 기기에서 만든 Long 밀리초(serverTimestamp 안 씀), 색은 ARGB 정수. **문서 ID는 UUID 문자열**이다 — 직접 공유하면 `ShareKey.postId(shortcode)`에서 만든 결정적 UUID, 장소·폴더는 `UUID.randomUUID()`, Room에서 옮긴 것은 Room의 UUID 그대로.
 - **게시물-장소 연결은 게시물 문서의 `placeIds` 배열**이다(장소 문서엔 게시물 정보가 없다). **검색 후보는 별도 컬렉션이 아니라 게시물 문서의 `candidates` 배열**이다(정리하면 사라지는 임시 데이터, 항목당 최대 5개라 문서 크기 한도 1MiB에 한참 못 미친다). 비어 있는 배열은 필드를 만들지 않는다.
 - 문서에 없는 것: `memo`(기능 제거됨), `thumbnailUrl` — 썸네일은 인스타 CDN을 `ThumbnailStore`가 기기에 받아둔 `{postId}.jpg`이고, 읽을 때 파일이 있으면 도메인 `SavedPost.thumbnailUrl`을 `file://`로 채우고 없으면 null이다(다른 기기에선 썸네일 없음을 허용, Storage는 안 쓴다).
-- 필드 ↔ 도메인 변환은 `data/firestore/FirestoreMappers.kt` 한 곳이다. 이전된 데이터와 새로 만든 데이터의 문서 모양이 달라지면 안 되므로 새 필드는 여기서만 추가한다.
+- 필드 ↔ 도메인 변환은 `data/firestore/FirestoreMappers.kt` 한 곳이다. 이전된 데이터와 새로 만든 데이터의 문서 모양이 달라지면 안 되므로 새 필드는 여기서만 추가한다. **새 필드·enum 값을 추가하면 `firestore.rules`의 허용 목록과 `FirestoreRulesTest`도 같이 고친다** — 안 고치면 서버가 쓰기를 거부하고, 앱은 로그만 남기고 그 쓰기를 버린다(`logFailure`).
 - 친구 공유는 별도 최상위 컬렉션으로 추가할 예정이라 이 구조가 막지 않는다(보안 규칙도 그때 따로 추가).
 - 쿼리: 복합 인덱스가 필요한 쿼리는 없다(`firestore.indexes.json`은 비어 있는 게 맞다). 미확정 게시물은 `status != RESOLVED`(단일 필드 자동 인덱스).
 
@@ -434,7 +434,8 @@ enum class UnresolvedReason {
   - Analytics: `room_migration_started`(이어하기에선 안 찍힘)/`room_migration_completed`(폴더·장소·게시물 개수, 처음 시작부터의 소요 시간)/`room_migration_failed`(`error_type`: network·permission·unknown). 내용은 넣지 않는다
   - 알려진 한계: 이전 도중 사용자가 같은 이름의 폴더를 새로 만들면 이름이 겹칠 수 있다. 이전 도중 지운 장소가 아직 안 옮겨진 게시물의 `placeIds`에 남을 수 있다(읽는 쪽이 무시하므로 화면엔 안 보인다)
 - **썸네일 고아 정리의 서버 확인**: `ThumbnailMaintenance`는 캐시(`cachedPostIds`) 기준으로 고아로 의심되는 파일만 `SavedPostRepository.findIdsAbsentOnServer`(`whereIn(documentId)` 30개씩, `Source.SERVER`)로 확인하고 **서버에도 없다고 확인된 것만** 지운다. 오프라인·실패·상한(한 번에 60개) 초과분은 지우지 않고 다음 실행으로 미룬다. 읽기는 의심 파일이 없으면 0, 있으면 질의당 최소 1건(서버에 있는 문서만큼 더). 확인된 문서는 캐시에 들어가 다음부터 의심에서 빠진다. 이전이 끝나기 전엔 고아 판단 자체를 안 한다(위 규칙 유지). 아래 "알려진 위험(2단계부터)"은 이 확인으로 완화됐다
-- **Firestore 콘솔에서 직접 할 일**(코드로 안 됨): 서울 리전 프로덕션 모드 DB 생성, Authentication 익명 로그인 켜기, 예산 알림, 규칙·인덱스 배포(`firebase deploy --only firestore`)
+- **보안 규칙** (`firestore.rules`, 12단계): `users/{uid}/{folders,places,posts}`만 `request.auth.uid == uid`일 때 허용하고 나머지(users/{uid} 문서 자체·하위 컬렉션·다른 컬렉션)는 거부한다. 쓴 뒤의 문서 전체(`request.resource.data`)를 검사하므로 필드 하나만 고치는 update·`arrayUnion`/`arrayRemove`·WriteBatch도 결과가 올바르면 통과한다. 허용 필드는 `FirestoreMappers`의 `Fields`·`toFields`·`toMap` 출력에서 뽑았다(`hasOnly`). 앱이 null로 저장하는 선택 필드(shortcode, caption, unresolvedReason, resolvedAt, folderId, name, address, latitude, longitude, kakaoPlaceId, category)는 "없거나 null이거나 올바른 값"이다. 한계: 규칙 언어에 반복문이 없어 `candidates` 배열 안 항목의 필드는 검증하지 못한다(크기 500 + 문서 1MiB 한도). 테스트는 `FirestoreRulesTest`(정상 문서는 매퍼 출력 그대로, 거부는 한 군데만 망가뜨림, enum 전체를 써서 규칙과 어긋나면 깨짐). 에뮬레이터는 `firebase.json`의 `firestore.rules`를 로드하고 파일을 고치면 자동으로 다시 읽는다 — **계측 테스트는 항상 규칙이 적용된 상태**였다(2단계부터)
+- **Firestore 콘솔·CLI에서 직접 할 일**(코드로 안 됨, 순서대로): ① 서울 리전(`asia-northeast3`) 프로덕션 모드 DB 생성(리전은 못 바꾼다) → ② **앱 배포 전에** 규칙·인덱스 배포: `firebase deploy --only firestore`(CLI 직접, `firebase login` 후; 프로덕션 모드는 규칙을 배포하기 전엔 모든 접근이 막힌다) → ③ Authentication 익명 로그인 켜기 → ④ 예산 알림 → ⑤ App Check는 모니터링 모드로 먼저 켜서 Firestore·Auth 요청의 "확인됨" 비율을 보고, 거의 100%일 때만 시행(enforce)으로 전환. 릴리스(Play Integrity)는 Play에 올린 서명 빌드에서만 토큰이 나오므로 그 전에 시행하면 사용자 전부가 막힌다. 디버그 빌드는 기기별 디버그 토큰 등록 필요
 - **알려진 위험(2단계부터)**: `cachedPostIds()`(썸네일 고아 정리)는 Firestore **캐시**에서 ID를 읽는다. 캐시가 20MB 상한으로 정리(GC)돼 일부 게시물이 캐시에서 빠지면 그 썸네일이 고아로 오판돼 지워질 수 있다. 문서가 작아 거의 안 일어나지만, 캐시 상한을 줄이거나 문서를 크게 만들면 다시 봐야 한다
 
 ## 코딩 컨벤션

@@ -1,11 +1,128 @@
 rules_version = '2';
 
-// 개인 데이터는 전부 users/{uid} 아래에 있고, 본인(익명 로그인 포함)만 읽고 쓸 수 있다.
+// 개인 데이터는 전부 users/{uid} 아래(folders, places, posts)에 있고, 본인(익명 로그인 포함)만 읽고 쓰고 지울 수 있다.
+// 그 밖의 모든 경로는 거부한다(users/{uid} 문서 자체, 다른 컬렉션, 하위 컬렉션 포함).
 // 친구 공유 기능은 별도 최상위 컬렉션으로 추가할 예정이라 이 규칙은 그걸 막지 않는다(그때 규칙을 따로 추가한다).
+//
+// 필드 검증의 기준은 앱 코드다 — data/firestore/FirestoreMappers.kt(Fields, toFields, toMap)와
+// 3단계 이전(RoomToFirestoreMigrator)이 쓰는 같은 매퍼의 출력. 필드를 추가·변경하면 이 파일과
+// FirestoreRulesTest(매퍼가 만든 문서를 규칙에 그대로 쓰는 테스트)를 함께 고친다.
+//
+// 검증은 "쓴 뒤의 문서 전체"(request.resource.data)에 적용한다. 그래서 필드 하나만 고치는 update
+// (상태 변경, folderId 배정, arrayUnion/arrayRemove, 후보 교체)도 결과 문서가 올바르면 통과한다.
+// 앱이 null로 저장하는 선택 필드(shortcode, caption, unresolvedReason, resolvedAt, folderId, name, address,
+// latitude, longitude, kakaoPlaceId, category)는 "없거나 null이거나 올바른 값"으로 받는다.
+//
+// 한계: 규칙 언어엔 반복문이 없어서 candidates 배열 안의 각 항목(map)의 필드는 검증하지 못한다.
+// 배열 크기와 문서 크기 한도(1MiB)로만 제한한다.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+    // ── 공통 ──
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
     }
+
+    // 문서 ID는 앱이 만든 UUID(또는 이전된 Room의 UUID)다.
+    function validId(id) {
+      return id.matches('[A-Za-z0-9_.-]{1,100}');
+    }
+
+    function isStr(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    // 선택 문자열: 필드가 없거나, null이거나, 길이 상한 이하의 문자열
+    function optStr(d, k, max) {
+      return !(k in d) || d[k] == null || isStr(d[k], max);
+    }
+
+    // 선택 숫자(정수든 실수든): 필드가 없거나, null이거나, 범위 안의 숫자
+    function optNum(d, k, lo, hi) {
+      return !(k in d) || d[k] == null || (d[k] is number && d[k] >= lo && d[k] <= hi);
+    }
+
+    // 선택 시간: 없거나 null이거나 숫자
+    function optTime(d, k) {
+      return !(k in d) || d[k] == null || d[k] is number;
+    }
+
+    // ResolveStatus 이름. 새 값을 추가하면 여기도 추가한다(테스트가 enum 전체를 쓴다).
+    function validStatus(v) {
+      return v in ['PENDING', 'RESOLVED', 'NEEDS_REVIEW', 'UNRESOLVED'];
+    }
+
+    // UnresolvedReason 이름. 새 값을 추가하면 여기도 추가한다.
+    function validReason(v) {
+      return v in ['PLACE_NOT_FOUND', 'NETWORK_ERROR'];
+    }
+
+    // ── 문서 모양 ──
+
+    // folders: name, color, iconKey, createdAt (Folder.toFields)
+    function validFolder(d) {
+      return d.keys().hasOnly(['name', 'color', 'iconKey', 'createdAt'])
+        && d.keys().hasAll(['name', 'createdAt'])
+        && isStr(d.name, 100) && d.name.size() >= 1
+        && d.createdAt is number
+        && (!('color' in d) || d.color is int)
+        && (!('iconKey' in d) || isStr(d.iconKey, 32));
+    }
+
+    // places: name, address, latitude, longitude, kakaoPlaceId, category, status, createdAt, resolvedAt, folderId (Place.toFields)
+    function validPlace(d) {
+      return d.keys().hasOnly(['name', 'address', 'latitude', 'longitude', 'kakaoPlaceId', 'category',
+                               'status', 'createdAt', 'resolvedAt', 'folderId'])
+        && d.keys().hasAll(['status', 'createdAt'])
+        && optStr(d, 'name', 200)
+        && optStr(d, 'address', 300)
+        && optStr(d, 'kakaoPlaceId', 100)
+        && optStr(d, 'category', 200)
+        && optStr(d, 'folderId', 100)
+        && optNum(d, 'latitude', -90, 90)
+        && optNum(d, 'longitude', -180, 180)
+        && validStatus(d.status)
+        && d.createdAt is number
+        && optTime(d, 'resolvedAt');
+    }
+
+    // posts: instagramUrl, shortcode, caption, status, extractedCount, createdAt, unresolvedReason (SavedPost.toFields)
+    //        + placeIds[], candidates[] (연결·후보. 비어 있으면 필드가 없을 수 있다)
+    // thumbnailUrl과 memo는 문서에 없다(file:// 경로는 기기마다 다르고 memo 기능은 제거됐다).
+    function validPost(d) {
+      return d.keys().hasOnly(['instagramUrl', 'shortcode', 'caption', 'status', 'extractedCount', 'createdAt',
+                               'unresolvedReason', 'placeIds', 'candidates'])
+        && d.keys().hasAll(['instagramUrl', 'status', 'createdAt'])
+        && isStr(d.instagramUrl, 500)
+        && optStr(d, 'shortcode', 100)
+        && optStr(d, 'caption', 20000)
+        && validStatus(d.status)
+        && optNum(d, 'extractedCount', 0, 1000)
+        && d.createdAt is number
+        && (!('unresolvedReason' in d) || d.unresolvedReason == null || validReason(d.unresolvedReason))
+        && (!('placeIds' in d) || (d.placeIds is list && d.placeIds.size() <= 200))
+        && (!('candidates' in d) || (d.candidates is list && d.candidates.size() <= 500));
+    }
+
+    // ── 경로 ──
+
+    match /users/{uid}/folders/{folderId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validId(folderId) && validFolder(request.resource.data);
+    }
+
+    match /users/{uid}/places/{placeId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validId(placeId) && validPlace(request.resource.data);
+    }
+
+    match /users/{uid}/posts/{postId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validId(postId) && validPost(request.resource.data);
+    }
+
+    // 그 밖의 모든 경로(users/{uid} 문서 자체, 위 세 컬렉션의 하위 컬렉션, 다른 컬렉션)는 거부한다.
+    // 규칙은 매칭되는 allow가 없으면 거부이므로 별도 match는 두지 않는다.
   }
 }
