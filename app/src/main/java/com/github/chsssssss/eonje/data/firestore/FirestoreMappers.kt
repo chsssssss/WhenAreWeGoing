@@ -66,6 +66,17 @@ internal fun SavedPost.toFields(): Map<String, Any?> = mapOf(
     Fields.UNRESOLVED_REASON to unresolvedReason?.name,
 )
 
+/**
+ * Room에서 옮겨 오는 게시물의 전체 문서. [toFields]에 연결된 장소(placeIds)와 후보(candidates)를 얹는다 — 새로 만든 게시물이
+ * 저장·연결·후보 저장을 거치며 갖게 되는 모양과 같다(비어 있는 배열은 필드를 만들지 않는다).
+ */
+internal fun SavedPost.toFields(placeIds: List<String>, candidates: List<ExtractedCandidate>): Map<String, Any?> =
+    toFields() +
+        listOfNotNull(
+            placeIds.takeIf { it.isNotEmpty() }?.let { Fields.PLACE_IDS to it },
+            candidates.takeIf { it.isNotEmpty() }?.let { list -> Fields.CANDIDATES to list.map { it.toMap() } },
+        )
+
 /** [localThumbnailUrl]은 이 기기의 {postId}.jpg가 있으면 그 file:// 경로, 없으면 null이다. 필수 필드가 없는 문서는 건너뛴다(null). */
 internal fun DocumentSnapshot.toSavedPost(localThumbnailUrl: (String) -> String?): SavedPost? {
     val url = getString(Fields.INSTAGRAM_URL) ?: return null

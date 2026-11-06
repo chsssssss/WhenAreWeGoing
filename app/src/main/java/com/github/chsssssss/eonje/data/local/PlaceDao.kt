@@ -31,4 +31,12 @@ interface PlaceDao {
 
     @Query("DELETE FROM places WHERE id = :id")
     suspend fun delete(id: String)
+
+    // ── Room → Firestore 이전(읽기 전용) ──
+
+    @Query("SELECT * FROM places WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun pageAfter(afterId: String, limit: Int): List<PlaceEntity>
+
+    @Query("SELECT COUNT(*) FROM places")
+    suspend fun count(): Int
 }

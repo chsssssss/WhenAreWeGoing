@@ -161,6 +161,11 @@ class RoomPlaceRepositoryTest {
         override suspend fun delete(id: String) {
             places.remove(id)
         }
+
+        override suspend fun pageAfter(afterId: String, limit: Int): List<PlaceEntity> =
+            places.values.filter { it.id > afterId }.sortedBy { it.id }.take(limit)
+
+        override suspend fun count(): Int = places.size
     }
 
     private class FakePostPlaceCrossRefDao : PostPlaceCrossRefDao {
@@ -181,6 +186,8 @@ class RoomPlaceRepositoryTest {
         override suspend fun deleteForPlace(placeId: String) {
             refs.removeAll { it.placeId == placeId }
         }
+
+        override suspend fun forPosts(postIds: List<String>): List<PostPlaceCrossRef> = refs.filter { it.postId in postIds }
     }
 
     /** 이 테스트들이 확인하는 동작에는 게시물 저장소가 관여하지 않는다 — 호출되면 바로 드러나게 둔다. */
@@ -195,5 +202,7 @@ class RoomPlaceRepositoryTest {
         override fun observeAll(): Flow<List<SavedPostEntity>> = error("호출되면 안 된다")
         override fun observeUnresolved(): Flow<List<SavedPostEntity>> = error("호출되면 안 된다")
         override suspend fun deleteByIds(ids: List<String>) = error("호출되면 안 된다")
+        override suspend fun pageAfter(afterId: String, limit: Int): List<SavedPostEntity> = error("호출되면 안 된다")
+        override suspend fun count(): Int = error("호출되면 안 된다")
     }
 }

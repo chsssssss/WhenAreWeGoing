@@ -14,6 +14,7 @@ import com.github.chsssssss.eonje.domain.repository.CaptionParsingRepository
 import com.github.chsssssss.eonje.domain.repository.ExtractedCandidateRepository
 import com.github.chsssssss.eonje.domain.repository.InstagramMetaLookupRepository
 import com.github.chsssssss.eonje.domain.repository.KakaoLocalRepository
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -30,6 +31,12 @@ sealed interface MatchPostResult {
     data object Done : MatchPostResult
     /** 네트워크 문제로 판단을 내리지 못함 — WorkManager가 지수 백오프로 재시도해야 함. */
     data object Retry : MatchPostResult
+
+    /**
+     * 게시물이 아직 Firestore에 없는데 Room → Firestore 이전이 안 끝났다(업데이트 전에 예약된 작업이 먼저 돈 경우).
+     * 게시물이 삭제된 게 아니라 아직 안 옮겨진 것일 수 있어서, 재시도 횟수를 쓰지 않고 이전이 끝날 때까지 기다린다.
+     */
+    data object WaitForMigration : MatchPostResult
 }
 
 /**
@@ -47,9 +54,11 @@ class MatchPostUseCase @Inject constructor(
     private val thumbnailStore: ThumbnailStore,
     private val notifier: PlaceSavedNotifier,
     private val analytics: FirebaseAnalytics,
+    private val legacyMigration: LegacyMigrationStatus,
 ) {
     suspend operator fun invoke(postId: String): MatchPostResult {
-        val post = savedPostRepository.findById(postId) ?: return MatchPostResult.Done
+        val post = savedPostRepository.findById(postId)
+            ?: return if (legacyMigration.isComplete()) MatchPostResult.Done else MatchPostResult.WaitForMigration
 
         // 이전 시도에서 캡션을 이미 받아뒀으면(파싱·카카오 검색 단계에서 재시도 중) Apify를 다시 부르지 않는다 —
         // 호출할 때마다 크레딧이 들고, 받아온 내용도 그대로다. 빈 캡션은 저장 전에 UNRESOLVED로 끝나므로

@@ -42,6 +42,8 @@ class CaptionParsingWorker @AssistedInject constructor(
         }
         return when (result) {
             MatchPostResult.Done -> Result.success()
+            // 이전이 끝나길 기다린다. 일반 재시도가 아니므로 횟수 한도(→ UNRESOLVED)를 적용하지 않는다.
+            MatchPostResult.WaitForMigration -> Result.retry()
             MatchPostResult.Retry -> {
                 if (runAttemptCount >= MAX_RETRY_ATTEMPTS) {
                     // 네트워크 없음 → 지수 백오프 재시도. 재시도 한도를 넘기면 조용히 UNRESOLVED로 넘긴다.

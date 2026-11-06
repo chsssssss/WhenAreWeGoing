@@ -19,6 +19,7 @@ class FakeUserSession(
         private set
 
     override fun isSignedIn() = signedIn
+    override fun currentUid(): String? = if (signedIn) "uid" else null
 
     override suspend fun signInIfNeeded(): Boolean {
         if (signedIn) return true
@@ -61,4 +62,10 @@ class FakePostWorkScheduler : PostWorkScheduler {
     override fun scheduleSaveSharedPost(shareKey: String, url: String, shortcode: String?, createdAt: Long) {
         queued += Queued(shareKey, url, shortcode, createdAt)
     }
+}
+
+class FakeLegacyMigrationStatus(var complete: Boolean = true, var legacyShortcodes: Set<String> = emptySet()) :
+    com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus {
+    override suspend fun isComplete() = complete
+    override suspend fun isLegacyDuplicate(shortcode: String) = !complete && shortcode in legacyShortcodes
 }

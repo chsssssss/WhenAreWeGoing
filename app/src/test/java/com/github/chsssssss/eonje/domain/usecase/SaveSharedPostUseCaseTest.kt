@@ -17,12 +17,14 @@ class SaveSharedPostUseCaseTest {
     private lateinit var repository: FakeSavedPostRepository
     private lateinit var scheduler: FakePostWorkScheduler
     private lateinit var useCase: SaveSharedPostUseCase
+    private lateinit var legacy: FakeLegacyMigrationStatus
 
     private fun setUp(signedIn: Boolean) {
         session = FakeUserSession(signedIn = signedIn)
         repository = FakeSavedPostRepository(session)
         scheduler = FakePostWorkScheduler()
-        useCase = SaveSharedPostUseCase(repository, scheduler, session)
+        legacy = FakeLegacyMigrationStatus()
+        useCase = SaveSharedPostUseCase(repository, scheduler, session, legacy)
     }
 
     @Before
@@ -62,7 +64,7 @@ class SaveSharedPostUseCaseTest {
         val repo = FakeSavedPostRepository(FakeUserSession(signedIn = false))
         scheduler = FakePostWorkScheduler()
 
-        val result = SaveSharedPostUseCase(repo, scheduler, racing)(shared)
+        val result = SaveSharedPostUseCase(repo, scheduler, racing, FakeLegacyMigrationStatus())(shared)
 
         assertEquals(SaveSharedPostResult.SavedLater, result)
         assertEquals(1, scheduler.queued.size)
@@ -75,6 +77,25 @@ class SaveSharedPostUseCaseTest {
 
         assertEquals(1, repository.posts.size)
         assertEquals(1, scheduler.captionParsing.size)
+    }
+
+    @Test
+    fun Room_이전이_안_끝났고_Room에_이미_있는_게시물이면_중복으로_만들지_않는다() = runBlocking {
+        legacy.complete = false
+        legacy.legacyShortcodes = setOf("ABC123")
+
+        assertEquals(SaveSharedPostResult.AlreadySaved, useCase(shared))
+
+        assertTrue(repository.posts.isEmpty())
+        assertTrue(scheduler.captionParsing.isEmpty())
+    }
+
+    @Test
+    fun Room_이전이_끝났으면_Room은_보지_않는다() = runBlocking {
+        legacy.complete = true
+        legacy.legacyShortcodes = setOf("ABC123")
+
+        assertEquals(SaveSharedPostResult.Saved, useCase(shared))
     }
 
     @Test

@@ -18,4 +18,8 @@ interface PostPlaceCrossRefDao {
 
     @Query("DELETE FROM PostPlaceCrossRef WHERE placeId = :placeId")
     suspend fun deleteForPlace(placeId: String)
+
+    // 이전용: 게시물 묶음의 연결을 한 번에 읽는다.
+    @Query("SELECT * FROM PostPlaceCrossRef WHERE postId IN (:postIds)")
+    suspend fun forPosts(postIds: List<String>): List<PostPlaceCrossRef>
 }

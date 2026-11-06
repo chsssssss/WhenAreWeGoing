@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import com.github.chsssssss.eonje.data.remote.WHEREWEGOING_FIREBASE_APP_NAME
 import com.github.chsssssss.eonje.data.remote.appCheckProviderFactory
 import com.github.chsssssss.eonje.data.worker.InboxReminderWorker
+import com.github.chsssssss.eonje.data.worker.RoomMigrationWorker
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -101,6 +102,8 @@ class EonjeApplication : Application(), Configuration.Provider {
         val app = FirebaseApp.getApps(this).firstOrNull { it.name == WHEREWEGOING_FIREBASE_APP_NAME } ?: return
         FirestoreSetup.configure(app)
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).authSession().startAnonymousSignIn()
+        // 업데이트 전의 Room 데이터를 Firestore로 한 번 옮긴다. 이미 끝났으면 바로 끝나는 가벼운 작업이다.
+        RoomMigrationWorker.enqueue(WorkManager.getInstance(this))
     }
 
     /**

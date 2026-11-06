@@ -11,6 +11,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.chsssssss.eonje.data.repository.RoomSavedPostRepository
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -56,7 +57,10 @@ class ThumbnailMaintenanceInstrumentedTest {
         val store = ThumbnailStore(dir, OkHttpClient(), AndroidImageCodec)
         repository = RoomSavedPostRepository(database.savedPostDao(), store)
         state = MemoryState()
-        maintenance = ThumbnailMaintenance(store, repository, state)
+        maintenance = ThumbnailMaintenance(store, repository, state, object : LegacyMigrationStatus {
+            override suspend fun isComplete() = true
+            override suspend fun isLegacyDuplicate(shortcode: String) = false
+        })
     }
 
     @After

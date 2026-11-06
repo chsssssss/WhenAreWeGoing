@@ -3,6 +3,7 @@ package com.github.chsssssss.eonje.data.local
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -47,6 +48,30 @@ class ThumbnailMaintenanceTest {
         assertEquals(listOf("a.jpg"), dir.list()!!.toList())
         assertEquals(2, report.orphansDeleted)
         assertNull("이미 정리한 상태라 1회 정리는 건너뛴다", report.compaction)
+    }
+
+    @Test
+    fun `Room 이전이 안 끝났으면 일부만 옮겨진 상태라 고아로 보이는 파일도 지우지 않는다`() = runBlocking {
+        file("migrated.jpg", 10) // 이미 Firestore로 옮겨진 게시물
+        file("notYet.jpg", 10) // 아직 안 옮겨진 게시물 — ID 목록엔 없지만 고아가 아니다. 썸네일은 다시 받을 수 없다
+        file("old.jpg.tmp", 10).setLastModified(now - ThumbnailPolicy.STALE_TMP_MILLIS - 1)
+        val maintenance = maintenance(
+            FakePosts(listOf(post("migrated"))), FakeState(done = true), legacy = FakeLegacy(complete = false),
+        )
+
+        val report = maintenance.run(now)
+
+        assertEquals(listOf("migrated.jpg", "notYet.jpg"), dir.list()!!.sorted())
+        assertEquals("오래된 tmp만 지운다", 1, report.orphansDeleted)
+    }
+
+    @Test
+    fun `Room 이전이 끝나면 다시 고아를 지운다`() = runBlocking {
+        file("a.jpg", 10)
+        file("gone.jpg", 10)
+        maintenance(FakePosts(listOf(post("a"))), FakeState(done = true), legacy = FakeLegacy(complete = true)).run(now)
+
+        assertEquals(listOf("a.jpg"), dir.list()!!.toList())
     }
 
     @Test
@@ -273,8 +298,17 @@ class ThumbnailMaintenanceTest {
     private fun maintenance(posts: List<SavedPost>, state: FakeState, codec: FakeCodec = FakeCodec()) =
         maintenance(FakePosts(posts), state, codec)
 
-    private fun maintenance(posts: FakePosts, state: FakeState, codec: FakeCodec = FakeCodec()) =
-        ThumbnailMaintenance(ThumbnailStore(dir, OkHttpClient(), codec), posts, state)
+    private fun maintenance(
+        posts: FakePosts,
+        state: FakeState,
+        codec: FakeCodec = FakeCodec(),
+        legacy: FakeLegacy = FakeLegacy(complete = true),
+    ) = ThumbnailMaintenance(ThumbnailStore(dir, OkHttpClient(), codec), posts, state, legacy)
+}
+
+private class FakeLegacy(var complete: Boolean) : LegacyMigrationStatus {
+    override suspend fun isComplete() = complete
+    override suspend fun isLegacyDuplicate(shortcode: String) = false
 }
 
 private class FakeState(var done: Boolean = false) : ThumbnailMaintenanceState {

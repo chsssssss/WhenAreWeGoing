@@ -90,6 +90,9 @@ class RoomFolderRepositoryTest {
         override suspend fun delete(id: String) {
             rows.removeAll { it.id == id }
         }
+        override suspend fun pageAfter(afterId: String, limit: Int): List<FolderEntity> =
+            rows.filter { it.id > afterId }.sortedBy { it.id }.take(limit)
+        override suspend fun count(): Int = rows.size
     }
 
     private class FakePlaceDao : PlaceDao {
@@ -104,5 +107,7 @@ class RoomFolderRepositoryTest {
             rows.replaceAll { if (it.folderId == folderId) it.copy(folderId = null) else it }
         }
         override suspend fun delete(id: String) { rows.removeAll { it.id == id } }
+        override suspend fun pageAfter(afterId: String, limit: Int): List<PlaceEntity> = emptyList()
+        override suspend fun count(): Int = rows.size
     }
 }

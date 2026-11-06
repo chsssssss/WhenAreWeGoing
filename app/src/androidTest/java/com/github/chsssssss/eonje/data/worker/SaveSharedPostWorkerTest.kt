@@ -34,6 +34,7 @@ class SaveSharedPostWorkerTest {
     private class Session(var signedIn: Boolean, private val failuresBeforeSuccess: Int) : UserSession {
         var attempts = 0
         override fun isSignedIn() = signedIn
+        override fun currentUid(): String? = if (signedIn) "uid" else null
         override suspend fun signInIfNeeded(): Boolean {
             if (signedIn) return true
             attempts++
@@ -61,6 +62,11 @@ class SaveSharedPostWorkerTest {
         override fun observeUnresolved(): Flow<List<SavedPost>> = emptyFlow()
     }
 
+    private object Complete : com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus {
+        override suspend fun isComplete() = true
+        override suspend fun isLegacyDuplicate(shortcode: String) = false
+    }
+
     private class Scheduler : PostWorkScheduler {
         val captionParsing = mutableListOf<String>()
         override fun scheduleCaptionParsing(postId: String) { captionParsing += postId }
@@ -68,7 +74,7 @@ class SaveSharedPostWorkerTest {
     }
 
     private fun worker(session: Session, repo: Repo, scheduler: Scheduler): SaveSharedPostWorker {
-        val useCase = SaveSharedPostUseCase(repo, scheduler, session)
+        val useCase = SaveSharedPostUseCase(repo, scheduler, session, Complete)
         return TestListenableWorkerBuilder<SaveSharedPostWorker>(context)
             .setInputData(SaveSharedPostWorker.inputData(url, "ABC123", 1234L))
             .setWorkerFactory(object : WorkerFactory() {
@@ -129,7 +135,7 @@ class SaveSharedPostWorkerTest {
         val scheduler = Scheduler()
         worker(session, repo, scheduler).doWork()
 
-        val direct = SaveSharedPostUseCase(repo, scheduler, session)("$url?igsh=zzz")
+        val direct = SaveSharedPostUseCase(repo, scheduler, session, Complete)("$url?igsh=zzz")
 
         assertEquals(SaveSharedPostResult.AlreadySaved, direct)
         assertEquals(1, repo.posts.size)

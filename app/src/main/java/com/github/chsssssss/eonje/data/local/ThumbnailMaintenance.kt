@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -69,6 +70,7 @@ class ThumbnailMaintenance @Inject constructor(
     private val store: ThumbnailStore,
     private val posts: SavedPostRepository,
     private val state: ThumbnailMaintenanceState,
+    private val legacyMigration: LegacyMigrationStatus,
 ) {
     suspend fun run(nowMillis: Long): MaintenanceReport = withContext(Dispatchers.IO) {
         // 순서가 중요하다: 파일 목록을 먼저 만들고 그다음에 DB의 게시물을 읽는다.
@@ -80,7 +82,11 @@ class ThumbnailMaintenance @Inject constructor(
 
         // 로컬 데이터가 비어 있으면 "게시물이 없다"와 "아직 로컬에 못 올라왔다"를 구별할 수 없다. 썸네일은 다시 받을 수 없어서
         // 이때는 파일 이름으로 고아를 판단하지 않고, 오래된 .tmp만 정리한다.
-        val orphanCandidates = if (knownIds.isEmpty()) files.filter { it.name.endsWith(".tmp") } else files
+        //
+        // Room → Firestore 이전이 안 끝났을 때도 마찬가지다: 일부만 옮겨진 상태에서 ID 목록에 없다고 지우면, 아직 안 옮겨진 게시물의
+        // 썸네일(다시 받을 수 없다)을 잃는다. 이전이 끝난 뒤에만 고아를 판단한다.
+        val canJudgeOrphans = knownIds.isNotEmpty() && legacyMigration.isComplete()
+        val orphanCandidates = if (canJudgeOrphans) files else files.filter { it.name.endsWith(".tmp") }
         val orphansDeleted = store.deleteOrphans(orphanCandidates, knownIds, nowMillis)
         if (state.isCompactionDone()) return@withContext MaintenanceReport(orphansDeleted, null)
 

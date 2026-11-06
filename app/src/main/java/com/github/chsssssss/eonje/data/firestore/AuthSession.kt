@@ -47,7 +47,7 @@ class AuthSession @Inject constructor(
     }.stateIn(scope, SharingStarted.Eagerly, auth.currentUser?.uid)
 
     /** 기다리지 않고 지금 값만 본다(백그라운드 작업·메인 스레드에서 쓰는 읽기용). */
-    fun currentUid(): String? = auth.currentUser?.uid
+    override fun currentUid(): String? = auth.currentUser?.uid
 
     /** uid가 생길 때까지 기다린다. 제한 시간 안에 안 생기면 null. */
     suspend fun awaitUid(timeoutMillis: Long): String? =

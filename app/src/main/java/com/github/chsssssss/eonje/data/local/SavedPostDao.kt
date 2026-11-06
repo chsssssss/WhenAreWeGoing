@@ -49,4 +49,12 @@ interface SavedPostDao {
 
     @Query("DELETE FROM saved_posts WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)
+
+    // ── Room → Firestore 이전(읽기 전용) ──
+
+    @Query("SELECT * FROM saved_posts WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun pageAfter(afterId: String, limit: Int): List<SavedPostEntity>
+
+    @Query("SELECT COUNT(*) FROM saved_posts")
+    suspend fun count(): Int
 }

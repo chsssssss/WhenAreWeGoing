@@ -51,7 +51,7 @@ import java.net.URL
 
 /**
  * Firestore 구현의 핵심 동작을 Firebase Emulator Suite(Auth+Firestore)에 붙여서 확인한다.
- * 호스트 PC에서 먼저 `firebase emulators:start --only auth,firestore --project demo-eonje`가 떠 있어야 한다
+ * 호스트 PC에서 먼저 `scripts/start-emulators.sh`(= `firebase emulators:start --only auth,firestore`, 프로젝트는 .firebaserc 기본값 = 앱과 같은 ID)가 떠 있어야 한다
  * (안드로이드 에뮬레이터에서 호스트는 10.0.2.2). 안 떠 있으면 테스트는 건너뛴다(실패 처리하지 않음).
  *
  * 테스트마다 새 FirebaseApp과 새 익명 사용자(uid)를 쓰므로 서로의 데이터가 섞이지 않는다. firestore.rules가 적용된 상태다.
@@ -458,6 +458,8 @@ class FirestoreRepositoriesTest {
 
             assertTrue(results.all { it })
             assertTrue(session.isSignedIn())
+            // 인증 상태 리스너는 메인 스레드로 비동기로 오므로 도착할 때까지 잠깐 기다린다.
+            awaitUntil { seen.isNotEmpty() }
             assertEquals("앱 시작 루프와 Worker가 겹쳐도 uid는 하나다", 1, seen.size)
         } finally {
             auth.removeAuthStateListener(listener)
@@ -548,39 +550,12 @@ class FirestoreRepositoriesTest {
         runCatching { Socket().use { it.connect(InetSocketAddress(HOST, port), 1_000); true } }.getOrDefault(false)
     }
 
-    /** 프로세스에서 한 번만 만드는 FirebaseApp·Firestore·Auth. 에뮬레이터 연결도 여기서 한 번만 한다. */
-    private class Shared {
-        @Volatile var isStarted = false
-            private set
-
-        val app: FirebaseApp by lazy {
-            isStarted = true
-            FirebaseApp.initializeApp(
-                InstrumentationRegistry.getInstrumentation().targetContext.applicationContext,
-                FirebaseOptions.Builder().setProjectId(PROJECT).setApplicationId("1:1234567890:android:abcdef0123456789").setApiKey("fake-api-key").build(),
-                "firestore-emulator-test",
-            )
-        }
-        val firestore: FirebaseFirestore by lazy {
-            FirebaseFirestore.getInstance(app).apply {
-                // 설정을 먼저, 그다음 useEmulator(설정을 덮어쓰므로 순서가 반대면 운영 서버를 가리킨다).
-                // 메모리 캐시 기본값(eager GC)은 서버가 받아 간 문서를 리스너가 없으면 바로 지운다. 실제 앱의 영구 캐시처럼
-                // 문서를 남겨두는 LRU 정책으로 맞춘다(위젯·알림 워커가 캐시에서 읽는 동작을 같은 조건으로 확인하려고).
-                firestoreSettings = FirebaseFirestoreSettings.Builder()
-                    .setLocalCacheSettings(MemoryCacheSettings.newBuilder().setGcSettings(MemoryLruGcSettings.newBuilder().build()).build())
-                    .build()
-                useEmulator(HOST, FIRESTORE_PORT)
-            }
-        }
-        val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance(app).apply { useEmulator(HOST, AUTH_PORT) } }
-    }
-
     private companion object {
-        val shared = Shared()
-        const val HOST = "10.0.2.2"
-        const val FIRESTORE_PORT = 8080
-        const val AUTH_PORT = 9099
-        const val PROJECT = "demo-eonje"
+        val shared = FirebaseEmulatorEnv
+        const val HOST = FirebaseEmulatorEnv.HOST
+        const val FIRESTORE_PORT = FirebaseEmulatorEnv.FIRESTORE_PORT
+        const val AUTH_PORT = FirebaseEmulatorEnv.AUTH_PORT
+        val PROJECT = FirebaseEmulatorEnv.PROJECT
         const val TIMEOUT = 10_000L
         const val OFFLINE_WRITE_TIMEOUT = 5_000L
     }

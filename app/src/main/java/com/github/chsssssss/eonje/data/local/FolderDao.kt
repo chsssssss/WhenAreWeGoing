@@ -22,4 +22,12 @@ interface FolderDao {
 
     @Query("DELETE FROM folders WHERE id = :id")
     suspend fun delete(id: String)
+
+    // ── Room → Firestore 이전(읽기 전용). 이전 중엔 Room이 바뀌지 않으므로 id 커서로 이어서 읽을 수 있다. ──
+
+    @Query("SELECT * FROM folders WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun pageAfter(afterId: String, limit: Int): List<FolderEntity>
+
+    @Query("SELECT COUNT(*) FROM folders")
+    suspend fun count(): Int
 }

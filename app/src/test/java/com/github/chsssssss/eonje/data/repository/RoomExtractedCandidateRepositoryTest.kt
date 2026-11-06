@@ -75,5 +75,8 @@ class RoomExtractedCandidateRepositoryTest {
         override suspend fun deleteForPost(postId: String) {
             rows.removeAll { it.postId == postId }
         }
+
+        override suspend fun forPosts(postIds: List<String>): List<ExtractedCandidateEntity> =
+            rows.filter { it.postId in postIds }
     }
 }

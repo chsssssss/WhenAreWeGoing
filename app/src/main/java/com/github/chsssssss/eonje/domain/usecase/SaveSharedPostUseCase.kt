@@ -2,6 +2,7 @@ package com.github.chsssssss.eonje.domain.usecase
 
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.SavedPost
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.repository.NotSignedInException
 import com.github.chsssssss.eonje.domain.repository.PostWorkScheduler
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
@@ -25,6 +26,7 @@ class SaveSharedPostUseCase @Inject constructor(
     private val repository: SavedPostRepository,
     private val scheduler: PostWorkScheduler,
     private val session: UserSession,
+    private val legacyMigration: LegacyMigrationStatus,
 ) {
     /** 공유 수신(메인 스레드)에서 부른다. 로그인 전이면 **기다리지 않고** 곧바로 Worker 경로로 간다. */
     suspend operator fun invoke(sharedText: String): SaveSharedPostResult {
@@ -56,6 +58,10 @@ class SaveSharedPostUseCase @Inject constructor(
         return saveMutex.withLock {
             val postId = ShareKey.postId(ShareKey.of(shortcode, url))
             val existing = if (shortcode != null) repository.findByShortcode(shortcode) else repository.findById(postId)
+            // 이전이 안 끝났으면 이미 저장해둔(아직 Firestore로 못 옮겨진) 게시물일 수 있다 — Room도 shortcode로 확인한다.
+            if (existing == null && shortcode != null && legacyMigration.isLegacyDuplicate(shortcode)) {
+                return@withLock SaveSharedPostResult.AlreadySaved
+            }
             if (existing != null) {
                 // Worker가 저장은 했는데 F2 예약 직전에 죽었다면 PENDING으로 남아 있다 — 이어서 예약한다(KEEP이라 중복 안 됨).
                 if (fromWorker && existing.id == postId && existing.status == ResolveStatus.PENDING) {

@@ -28,6 +28,8 @@ import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import com.github.chsssssss.eonje.domain.repository.PostWorkScheduler
 import com.github.chsssssss.eonje.domain.repository.UserSession
+import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
+import com.github.chsssssss.eonje.data.migration.RoomMigrationStatusImpl
 import com.github.chsssssss.eonje.data.firestore.AuthSession
 import com.github.chsssssss.eonje.data.worker.WorkManagerPostWorkScheduler
 import dagger.Binds
@@ -71,6 +73,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindUserSession(impl: AuthSession): UserSession
+
+    @Binds
+    @Singleton
+    abstract fun bindLegacyMigrationStatus(impl: RoomMigrationStatusImpl): LegacyMigrationStatus
 
     @Binds
     @Singleton
