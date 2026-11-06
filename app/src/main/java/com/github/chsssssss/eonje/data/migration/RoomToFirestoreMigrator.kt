@@ -16,6 +16,9 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
@@ -188,14 +191,23 @@ class RoomToFirestoreMigrator(
         store.markKindDone(uid, kind)
     }
 
-    /** [ids] 중 서버에 이미 있는 문서 id. whereIn은 값을 30개까지만 받는다. 읽기는 있는 문서만큼(없으면 질의당 1건) 든다. */
+    /**
+     * [ids] 중 서버에 이미 있는 문서 id. whereIn은 값을 30개까지만 받아서 쪼개 묻는다 — 순차로 하면 배치마다 왕복이 17번이라
+     * [PARALLEL_QUERIES]개씩 동시에 보낸다. 읽기 비용은 있는 문서만큼(없으면 질의당 1건)이다.
+     */
     private suspend fun readServerIdsAmong(collection: CollectionReference, ids: Collection<String>): Set<String> {
         val found = HashSet<String>()
-        ids.chunked(WHERE_IN_LIMIT).forEach { chunk ->
-            val snapshot = withTimeoutOrNull(READ_TIMEOUT_MILLIS) {
-                collection.whereIn(FieldPath.documentId(), chunk).get(Source.SERVER).await()
-            } ?: throw IOException("서버 읽기 시간 초과")
-            snapshot.documents.mapTo(found) { it.id }
+        ids.chunked(WHERE_IN_LIMIT).chunked(PARALLEL_QUERIES).forEach { window ->
+            val results = coroutineScope {
+                window.map { chunk ->
+                    async {
+                        withTimeoutOrNull(READ_TIMEOUT_MILLIS) {
+                            collection.whereIn(FieldPath.documentId(), chunk).get(Source.SERVER).await()
+                        } ?: throw IOException("서버 읽기 시간 초과")
+                    }
+                }.awaitAll()
+            }
+            results.forEach { snapshot -> snapshot.documents.mapTo(found) { it.id } }
         }
         return found
     }
@@ -208,6 +220,7 @@ class RoomToFirestoreMigrator(
 
     private companion object {
         const val WHERE_IN_LIMIT = 30
+        const val PARALLEL_QUERIES = 8
         const val COMMIT_TIMEOUT_MILLIS = 60_000L
         const val READ_TIMEOUT_MILLIS = 30_000L
     }
