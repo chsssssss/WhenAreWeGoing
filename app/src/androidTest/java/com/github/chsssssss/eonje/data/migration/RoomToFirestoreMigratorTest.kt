@@ -298,7 +298,7 @@ class RoomToFirestoreMigratorTest {
     @Test
     fun 규칙에_걸리는_게시물_하나가_섞여도_나머지는_전부_이전되고_완료로_끝나며_걸린_문서만_건너뛴다() = runBlocking {
         seed()
-        db.savedPostDao().insert(badCaptionPost("post-bad")) // 캡션 21,000자 → 규칙 상한(20,000) 초과
+        db.savedPostDao().insert(unfixablePost("post-bad")) // extractedCount 5000 → 규칙 상한(1000) 초과, 고칠 수 없다
 
         val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
 
@@ -320,18 +320,18 @@ class RoomToFirestoreMigratorTest {
     }
 
     @Test
-    fun 한_배치_안에_걸리는_문서가_여러_개여도_폴더_장소_게시물_모두_격리하고_나머지를_옮긴다() = runBlocking {
+    fun 한_배치_안에_고칠_수_없는_문서가_여러_개여도_모두_격리하고_나머지를_옮긴다() = runBlocking<Unit> {
         seed()
-        db.folderDao().insert(FolderEntity("folder-bad", "", 5L, 0, "☕")) // 빈 이름
-        db.placeDao().insert(placeEntity("place-bad", folderId = null).copy(name = "가".repeat(201))) // 이름 상한 200 초과
-        db.savedPostDao().insert(badCaptionPost("post-b1"))
-        db.savedPostDao().insert(badCaptionPost("post-b2").copy(instagramUrl = "https://www.instagram.com/p/" + "a".repeat(500))) // URL 상한 500 초과
-        db.savedPostDao().insert(badCaptionPost("post-b3").copy(caption = "ok", extractedCount = 5_000)) // extractedCount 상한 1000 초과
+        db.placeDao().insert(placeEntity("place-bad", folderId = null).copy(latitude = 91.0)) // 좌표 범위 밖 — 고칠 수 없다
+        db.savedPostDao().insert(unfixablePost("post-b1"))
+        db.savedPostDao().insert(unfixablePost("post-b2").copy(instagramUrl = "https://www.instagram.com/p/" + "a".repeat(500))) // 정규형도 500자 초과
+        db.savedPostDao().insert(unfixablePost("post-b3").copy(shortcode = "s".repeat(101))) // 식별자는 자르지 않는다
 
         // 배치 크기 4: 게시물 두 번째 페이지는 [post-5, post-b1, post-b2, post-b3] — 4개 중 3개가 걸린다.
         val outcome = migrator(batchSize = 4).migrate(uid) as MigrationOutcome.Migrated
 
-        assertEquals(5, outcome.skipped)
+        assertEquals(4, outcome.skipped)
+        assertEquals(0, outcome.sanitized)
         assertEquals(2, outcome.folders)
         assertEquals(5, outcome.places)
         assertEquals(5, outcome.posts)
@@ -340,21 +340,187 @@ class RoomToFirestoreMigratorTest {
         assertEquals((1..5).map { "post-$it" }.toSet(), serverIds(firestore.posts(uid)))
         assertEquals(
             setOf(
-                "FOLDERS:folder-bad:PERMISSION_DENIED", "PLACES:place-bad:PERMISSION_DENIED",
+                "PLACES:place-bad:PERMISSION_DENIED",
                 "POSTS:post-b1:PERMISSION_DENIED", "POSTS:post-b2:PERMISSION_DENIED", "POSTS:post-b3:PERMISSION_DENIED",
             ),
             store.read().skipped,
         )
         assertTrue(store.read().completed)
-        assertEquals("Room은 그대로", 3, db.folderDao().count())
-        assertEquals(6, db.placeDao().count())
+        assertEquals("Room은 그대로", 6, db.placeDao().count())
         assertEquals(8, db.savedPostDao().count())
+    }
+
+    // ── 규칙 상한을 넘는 값 중 안전하게 고칠 수 있는 것은 고쳐서 옮긴다 ──
+
+    @Test
+    fun 빈_이름과_101자_이름의_폴더는_이름만_고쳐져서_이전되고_그_폴더의_장소는_그_폴더에_남는다() = runBlocking<Unit> {
+        db.folderDao().insert(FolderEntity("folder-blank", "   ", 1L, 0xFF1E88E5.toInt(), "☕"))
+        db.folderDao().insert(FolderEntity("folder-empty", "", 2L, 0xFFE53935.toInt(), "🍽️"))
+        db.folderDao().insert(FolderEntity("folder-long", "가".repeat(101), 3L, 0xFF43A047.toInt(), "🏠"))
+        db.folderDao().insert(FolderEntity("folder-ok", "정상 폴더", 4L, 0xFFFB8C00.toInt(), "⭐"))
+        db.placeDao().insert(placeEntity("place-blank", folderId = "folder-blank"))
+        db.placeDao().insert(placeEntity("place-empty", folderId = "folder-empty"))
+        db.placeDao().insert(placeEntity("place-long", folderId = "folder-long"))
+        db.placeDao().insert(placeEntity("place-ok", folderId = "folder-ok"))
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals("건너뛴 게 없다", 0, outcome.skipped)
+        assertEquals("고쳐서 옮긴 폴더 3개", 3, outcome.sanitized)
+        assertEquals(4, outcome.folders)
+        val folders = firestore.folders(uid).get(Source.SERVER).await().documents.associateBy { it.id }
+        assertEquals("이름 없는 폴더", folders.getValue("folder-blank").getString("name"))
+        assertEquals("이름 없는 폴더", folders.getValue("folder-empty").getString("name"))
+        assertEquals("가".repeat(100), folders.getValue("folder-long").getString("name"))
+        assertEquals("정상 폴더", folders.getValue("folder-ok").getString("name"))
+        // 이름 말고는 그대로: 색과 아이콘, 생성 시각
+        assertEquals("🏠", folders.getValue("folder-long").getString("iconKey"))
+        assertEquals(0xFF43A047.toInt().toLong(), folders.getValue("folder-long").getLong("color"))
+        assertEquals(3L, folders.getValue("folder-long").getLong("createdAt"))
+        // 그 폴더의 장소는 미분류가 아니라 그 폴더에 남는다
+        val places = firestore.places(uid).get(Source.SERVER).await().documents.associateBy { it.id }
+        assertEquals("folder-blank", places.getValue("place-blank").getString("folderId"))
+        assertEquals("folder-empty", places.getValue("place-empty").getString("folderId"))
+        assertEquals("folder-long", places.getValue("place-long").getString("folderId"))
+        assertEquals("folder-ok", places.getValue("place-ok").getString("folderId"))
+        // 기록에는 필드 이름만 있고 값(폴더 이름)은 없다
+        val state = store.read()
+        assertEquals(
+            setOf("FOLDERS:folder-blank:name", "FOLDERS:folder-empty:name", "FOLDERS:folder-long:name"),
+            state.sanitized,
+        )
+        assertTrue(state.skipped.isEmpty())
+        assertTrue(state.completed)
+        // Room의 원본은 그대로다
+        assertEquals("가".repeat(101), db.folderDao().findById("folder-long")!!.name)
+        assertEquals("   ", db.folderDao().findById("folder-blank")!!.name)
+    }
+
+    @Test
+    fun 장소_이름_주소_카테고리와_게시물_캡션_URL도_상한까지_고쳐서_옮기고_Room_원본은_그대로다() = runBlocking<Unit> {
+        seed()
+        val longUrl = "https://www.instagram.com/p/ABC123/?igsh=" + "x".repeat(600) // 500자 초과지만 인스타 게시물 URL로 해석된다
+        db.placeDao().insert(
+            placeEntity("place-long", folderId = null).copy(name = "가".repeat(201), address = "나".repeat(301), category = "다".repeat(201)),
+        )
+        db.savedPostDao().insert(
+            unfixablePost("post-long").copy(extractedCount = 0, caption = SECRET + "가".repeat(21_000), instagramUrl = longUrl),
+        )
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(0, outcome.skipped)
+        assertEquals("장소 1개 + 게시물 1개", 2, outcome.sanitized)
+        val place = firestore.places(uid).document("place-long").get(Source.SERVER).await()
+        assertEquals("가".repeat(200), place.getString("name"))
+        assertEquals("나".repeat(300), place.getString("address"))
+        assertEquals("다".repeat(200), place.getString("category"))
+        val post = firestore.posts(uid).document("post-long").get(Source.SERVER).await()
+        assertEquals(20_000, post.getString("caption")!!.length)
+        assertTrue(post.getString("caption")!!.startsWith(SECRET))
+        assertEquals("https://www.instagram.com/p/ABC123/", post.getString("instagramUrl"))
+        assertEquals(
+            setOf("PLACES:place-long:name,address,category", "POSTS:post-long:caption,instagramUrl"),
+            store.read().sanitized,
+        )
+        // 값 자체는 기록에 없다
+        assertFalse(store.read().sanitized.any { it.contains(SECRET) || it.contains("가가") })
+        // Room 원본은 건드리지 않는다
+        assertEquals(201, db.placeDao().findById("place-long")!!.name!!.length)
+        assertEquals(21_000 + SECRET.length, db.savedPostDao().findById("post-long")!!.caption!!.length)
+    }
+
+    @Test
+    fun 고친_뒤에도_거부되는_문서는_고쳐서_옮긴_것으로_세지_않고_건너뛴다() = runBlocking<Unit> {
+        seed()
+        // 캡션은 고칠 수 있지만 extractedCount는 못 고친다 → 끝내 거부
+        db.savedPostDao().insert(unfixablePost("post-both").copy(caption = "가".repeat(21_000)))
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(1, outcome.skipped)
+        assertEquals(0, outcome.sanitized)
+        assertEquals(setOf("POSTS:post-both:PERMISSION_DENIED"), store.read().skipped)
+        assertTrue(store.read().sanitized.isEmpty())
+        assertFalse("post-both" in serverIds(firestore.posts(uid)))
+    }
+
+    @Test
+    fun 규칙_상한_경계값_그대로인_문서는_고치지_않고_이전된다() = runBlocking<Unit> {
+        db.folderDao().insert(FolderEntity("folder-edge", "가".repeat(100), 1L, 0, "☕"))
+        db.placeDao().insert(placeEntity("place-edge", folderId = "folder-edge").copy(name = "가".repeat(200), address = "나".repeat(300), category = "다".repeat(200)))
+        db.savedPostDao().insert(unfixablePost("post-edge").copy(extractedCount = 1000, caption = "가".repeat(20_000)))
+
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(0, outcome.sanitized)
+        assertEquals(0, outcome.skipped)
+        assertEquals(20_000, firestore.posts(uid).document("post-edge").get(Source.SERVER).await().getString("caption")!!.length)
+    }
+
+    // ── 프로브 문서 ──
+
+    @Test
+    fun 프로브를_쓴_직후_앱이_죽어도_화면에는_안_보이고_다음_이전_시작에서_지워진다() = runBlocking<Unit> {
+        seed()
+        db.savedPostDao().insert(unfixablePost("post-bad")) // 고칠 수 없는 문서 → 영구 거부 → 프로브가 돈다
+        val crash = object : MigrationHooks {
+            override suspend fun afterProbeWritten() = throw Crash()
+        }
+
+        assertThrows(Crash::class.java) { runBlocking { migrator(hooks = crash).migrate(uid) } }
+
+        // 프로브 문서가 서버에 남았고, 지웠다는 확인이 없다는 표시도 남았다.
+        assertTrue("프로브가 남아 있어야 한다", RoomToFirestoreMigrator.PROBE_ID in serverIds(firestore.posts(uid)))
+        assertTrue(store.read().probePending)
+
+        // 남아 있는 동안에도 사용자 화면(인박스·홈·지도·위젯의 데이터원)에는 보이지 않는다.
+        val session = signedInSession()
+        val thumbs = ThumbnailStore(File(dir, "thumbs"), OkHttpClient(), AndroidImageCodec)
+        val postRepo = FirestoreSavedPostRepository(firestore, session, thumbs, scope)
+        val placeRepo = FirestorePlaceRepository(firestore, session, thumbs, PlacesChangedNotifier { }, scope)
+        assertTrue("인박스·배지(미확정)에 없다", postRepo.observeUnresolved().first().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
+        assertTrue("홈·지도·위젯의 장소별 게시물에 없다", placeRepo.observePostsByPlace().first().values.flatten().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
+        assertTrue("장소로는 더더욱 없다", placeRepo.observeAll().first().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
+        assertTrue("위젯이 읽는 캐시 목록에도 없다", postRepo.loadCachedUnresolved().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
+
+        // 다음 이전 시작에서 남은 프로브를 먼저 지우고 이어서 끝낸다.
+        val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
+
+        assertEquals(1, outcome.skipped)
+        assertFalse("프로브가 지워져야 한다", RoomToFirestoreMigrator.PROBE_ID in serverIds(firestore.posts(uid)))
+        assertFalse(store.read().probePending)
+        assertEquals((1..5).map { "post-$it" }.toSet(), serverIds(firestore.posts(uid)))
+        assertTrue(store.read().completed)
+    }
+
+    @Test
+    fun 프로브가_거부되면_프로브_표시를_남기지_않는다() = runBlocking<Unit> {
+        seed()
+        val signOut = object : MigrationHooks {
+            override suspend fun beforeCommit(kind: MigrationKind, ids: List<String>) {
+                if (kind == MigrationKind.FOLDERS) { auth.signOut(); kotlinx.coroutines.delay(2_000) }
+            }
+        }
+
+        runCatching { migrator(hooks = signOut).migrate(uid) }
+
+        assertFalse("거부됐으니 지울 문서가 없다 — 다음 시작에 불필요한 삭제를 하지 않는다", store.read().probePending)
+    }
+
+    @Test
+    fun 정상_이전에서는_프로브를_쓰지도_지우지도_않는다() = runBlocking<Unit> {
+        seed()
+        migrator().migrate(uid)
+
+        assertFalse(RoomToFirestoreMigrator.PROBE_ID in serverIds(firestore.posts(uid)))
+        assertFalse(store.read().probePending)
     }
 
     @Test
     fun 전부_문제_문서여도_계정_전체_거부가_아니면_모두_건너뛰고_완료한다() = runBlocking {
-        db.savedPostDao().insert(badCaptionPost("post-b1"))
-        db.savedPostDao().insert(badCaptionPost("post-b2"))
+        db.savedPostDao().insert(unfixablePost("post-b1"))
+        db.savedPostDao().insert(unfixablePost("post-b2"))
 
         val outcome = migrator().migrate(uid) as MigrationOutcome.Migrated
 
@@ -367,7 +533,7 @@ class RoomToFirestoreMigratorTest {
     @Test
     fun 일시적_오류와_영구_실패가_섞이면_일시적_오류는_재시도하고_영구_실패만_격리한다() = runBlocking {
         seed()
-        db.savedPostDao().insert(badCaptionPost("post-bad"))
+        db.savedPostDao().insert(unfixablePost("post-bad"))
         // 게시물 배치: 1차 전체 커밋(거부) → 절반씩 나눠 다시 커밋. 그 두 번째 하위 커밋에서 네트워크 오류가 난다.
         var postCommits = 0
         val flaky = object : MigrationHooks {
@@ -492,10 +658,13 @@ class RoomToFirestoreMigratorTest {
 
     private class Crash : RuntimeException("강제 종료 시뮬레이션")
 
-    /** 캡션이 규칙 상한(20,000자)을 넘는 게시물. 캡션 앞에 SECRET을 붙여서 기록에 내용이 새지 않는지 확인한다. */
-    private fun badCaptionPost(id: String) = SavedPostEntity(
-        id = id, shortcode = "SC-$id", instagramUrl = "https://www.instagram.com/p/SC-$id/", caption = SECRET + "가".repeat(21_000),
-        thumbnailUrl = null, status = ResolveStatus.UNRESOLVED, extractedCount = 0, createdAt = 2_000L,
+    /**
+     * 규칙이 거부하고 **고칠 수 없는** 게시물(extractedCount가 상한 1000 초과). 캡션 앞에 SECRET을 붙여서 기록에 내용이 새지 않는지 확인한다.
+     * (캡션이 긴 것, 이름이 긴 것은 이제 고쳐서 옮긴다 — 아래 sanitize 테스트 참고)
+     */
+    private fun unfixablePost(id: String) = SavedPostEntity(
+        id = id, shortcode = "SC-$id", instagramUrl = "https://www.instagram.com/p/SC-$id/", caption = SECRET + "가".repeat(50),
+        thumbnailUrl = null, status = ResolveStatus.UNRESOLVED, extractedCount = 5_000, createdAt = 2_000L,
         unresolvedReason = UnresolvedReason.PLACE_NOT_FOUND,
     )
 

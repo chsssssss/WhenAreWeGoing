@@ -93,6 +93,25 @@ class FirestoreRulesTest {
     }
 
     @Test
+    fun 이전의_프로브_문서와_고쳐서_옮긴_문서는_규칙을_통과한다() = runBlocking<Unit> {
+        // 프로브: 앱의 매퍼가 만든 문서 그대로
+        firestore.posts(uid).document(com.github.chsssssss.eonje.data.migration.RoomToFirestoreMigrator.PROBE_ID)
+            .set(com.github.chsssssss.eonje.data.migration.RoomToFirestoreMigrator.probeFields(1_700_000_000_000L)).await()
+        firestore.posts(uid).document(com.github.chsssssss.eonje.data.migration.RoomToFirestoreMigrator.PROBE_ID).delete().await()
+        // 보정기가 만든 값은 상한 경계(이름 100자·200자·300자, 캡션 20,000자)이고 규칙이 그대로 받는다
+        val folder = com.github.chsssssss.eonje.data.migration.LegacyDocSanitizer.folder(folder(name = "가".repeat(101))).value
+        firestore.folders(uid).document("f").set(folder.toFields()).await()
+        val unnamed = com.github.chsssssss.eonje.data.migration.LegacyDocSanitizer.folder(folder(name = "  ")).value
+        firestore.folders(uid).document("f2").set(unnamed.toFields()).await()
+        val p = com.github.chsssssss.eonje.data.migration.LegacyDocSanitizer.place(
+            place().copy(name = "가".repeat(999), address = "나".repeat(999), category = "다".repeat(999)),
+        ).value
+        firestore.places(uid).document("p").set(p.toFields()).await()
+        val post = com.github.chsssssss.eonje.data.migration.LegacyDocSanitizer.post(post().copy(caption = "가".repeat(99_999))).value
+        firestore.posts(uid).document("q").set(post.toFields(emptyList(), emptyList())).await()
+    }
+
+    @Test
     fun 선택_필드가_전부_null이거나_없어도_통과한다() = runBlocking<Unit> {
         val bare = Place("bare", null, null, null, null, null, null, ResolveStatus.PENDING, 1L, null, null)
         firestore.places(uid).document("bare").set(bare.toFields()).await()

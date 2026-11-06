@@ -48,6 +48,13 @@ data class MigrationState(
      * 행이다. **ID와 사유 코드만** 남기고 캡션 같은 내용은 남기지 않는다. 이 문서들은 Room에 그대로 남아 있다.
      */
     val skipped: Set<String> = emptySet(),
+    /**
+     * 규칙 상한을 넘는 값을 고쳐서 옮긴 문서: "종류:ID:고친 필드 이름"(예: FOLDERS:abc:name). 필드 **이름**만 남기고 값은 남기지 않는다.
+     * 고쳐서 옮겼지만 끝내 거부돼 건너뛴 문서는 여기 없다(건너뛴 쪽에만 있다).
+     */
+    val sanitized: Set<String> = emptySet(),
+    /** 오류 감별용 프로브 문서를 쓰기 시작했는데 지웠다는 확인이 아직 없다. 이전을 시작할 때 이 값이 남아 있으면 먼저 지운다. */
+    val probePending: Boolean = false,
 ) {
     /** 건너뛴 게시물 ID. */
     val skippedPostIds: Set<String> get() = skipped.mapNotNull { entry ->
@@ -102,15 +109,31 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
     }
 
     /** [cursor]까지 서버에 확정됐고 그중 [processed]개를 처리했다. 서버 확정 **뒤에** 부른다. */
-    suspend fun saveProgress(uid: String, kind: MigrationKind, cursor: String, processed: Int, skipped: List<String> = emptyList()) {
+    suspend fun saveProgress(
+        uid: String,
+        kind: MigrationKind,
+        cursor: String,
+        processed: Int,
+        skipped: List<String> = emptyList(),
+        sanitized: List<String> = emptyList(),
+    ) {
         dataStore.edit { prefs ->
             if (prefs[KEY_UID] != uid) return@edit
             if (skipped.isNotEmpty()) prefs[KEY_SKIPPED] = (prefs[KEY_SKIPPED] ?: emptySet()) + skipped
+            if (sanitized.isNotEmpty()) prefs[KEY_SANITIZED] = (prefs[KEY_SANITIZED] ?: emptySet()) + sanitized
             when (kind) {
                 MigrationKind.FOLDERS -> { prefs[KEY_FOLDER_CURSOR] = cursor; prefs[KEY_FOLDER_COUNT] = (prefs[KEY_FOLDER_COUNT] ?: 0) + processed }
                 MigrationKind.PLACES -> { prefs[KEY_PLACE_CURSOR] = cursor; prefs[KEY_PLACE_COUNT] = (prefs[KEY_PLACE_COUNT] ?: 0) + processed }
                 MigrationKind.POSTS -> { prefs[KEY_POST_CURSOR] = cursor; prefs[KEY_POST_COUNT] = (prefs[KEY_POST_COUNT] ?: 0) + processed }
             }
+        }
+    }
+
+    /** 프로브 문서를 쓰기 **전에** true로, 지웠다는 확인을 받은 **뒤에** false로 한다. */
+    suspend fun setProbePending(uid: String, pending: Boolean) {
+        dataStore.edit { prefs ->
+            if (prefs[KEY_UID] != uid) return@edit
+            prefs[KEY_PROBE_PENDING] = pending
         }
     }
 
@@ -150,6 +173,8 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         placeCount = this[KEY_PLACE_COUNT] ?: 0,
         postCount = this[KEY_POST_COUNT] ?: 0,
         skipped = this[KEY_SKIPPED] ?: emptySet(),
+        sanitized = this[KEY_SANITIZED] ?: emptySet(),
+        probePending = this[KEY_PROBE_PENDING] ?: false,
     )
 
     private companion object {
@@ -167,5 +192,7 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         val KEY_PLACE_COUNT = intPreferencesKey("place_count")
         val KEY_POST_COUNT = intPreferencesKey("post_count")
         val KEY_SKIPPED = stringSetPreferencesKey("skipped_docs")
+        val KEY_SANITIZED = stringSetPreferencesKey("sanitized_docs")
+        val KEY_PROBE_PENDING = booleanPreferencesKey("probe_pending")
     }
 }

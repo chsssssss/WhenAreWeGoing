@@ -51,6 +51,7 @@ class RoomMigrationWorker @AssistedInject constructor(
                     param(Events.Param.PLACE_COUNT, outcome.places.toLong())
                     param(Events.Param.POST_COUNT, outcome.posts.toLong())
                     param(Events.Param.SKIPPED_COUNT, outcome.skipped.toLong())
+                    param(Events.Param.SANITIZED_COUNT, outcome.sanitized.toLong())
                     param(Events.Param.DURATION_MS, outcome.durationMillis)
                 }
             }

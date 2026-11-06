@@ -44,6 +44,8 @@ sealed interface MigrationOutcome {
         val durationMillis: Long,
         /** 규칙 거부 등 영구 실패로 건너뛴 문서 수. 폴더·장소·게시물 개수에는 들어 있지 않다. */
         val skipped: Int = 0,
+        /** 규칙 상한을 넘는 값을 고쳐서 옮긴 문서 수(폴더·장소·게시물 개수에는 이미 들어 있다). */
+        val sanitized: Int = 0,
     ) : MigrationOutcome
 }
 
@@ -51,6 +53,9 @@ sealed interface MigrationOutcome {
 interface MigrationHooks {
     /** 커밋(또는 거부된 배치를 나눠 다시 쓰는 하위 커밋)을 시도하기 직전. 테스트가 일시적 오류를 끼워 넣는 데 쓴다. */
     suspend fun beforeCommit(kind: MigrationKind, ids: List<String>) {}
+
+    /** 프로브 문서를 서버에 쓴 직후, 지우기 전. 테스트가 여기서 프로세스가 죽는 상황을 만든다. */
+    suspend fun afterProbeWritten() {}
 
     suspend fun afterCommit(kind: MigrationKind, page: Int) {}
     suspend fun afterCheckpoint(kind: MigrationKind, page: Int) {}
@@ -101,6 +106,11 @@ class RoomToFirestoreMigrator(
     /** [onStarted]는 이 uid로 새로 시작할 때(이어하기가 아닐 때) 한 번 불린다. */
     suspend fun migrate(uid: String, onStarted: () -> Unit = {}): MigrationOutcome {
         var state = store.read()
+        // 지난번에 프로브 문서를 쓰고 지웠다는 확인을 못 받은 채 끝났다면(앱 종료·시간 초과) 먼저 지운다.
+        if (state.uid == uid && state.probePending) {
+            deleteProbe(uid)
+            state = store.read()
+        }
         if (state.completed && state.uid == uid) return MigrationOutcome.AlreadyCompleted
 
         if (state.uid != uid) {
@@ -120,7 +130,10 @@ class RoomToFirestoreMigrator(
                 readIds = { after -> folderDao.idsAfter(after, batchSize) },
                 readOne = { id -> folderDao.findById(id) },
                 idOf = { it.id },
-                toFields = { page -> page.associate { it.id to it.toDomain().toFields() } })
+                toFields = { page ->
+                    val fixed = page.associate { it.id to LegacyDocSanitizer.folder(it.toDomain()) }
+                    PageDocs(fixed.mapValues { it.value.value.toFields() }, fixed.fixedFieldsById())
+                })
         }
         if (!state.placesDone) {
             // 이전 도중에 사용자가 이미 옮겨진 폴더를 지웠을 수 있다. 없는 폴더를 가리키는 folderId는 미분류(null)로 옮긴다.
@@ -131,10 +144,11 @@ class RoomToFirestoreMigrator(
                 readOne = { id -> placeDao.findById(id) },
                 idOf = { it.id },
                 toFields = { page ->
-                    page.associate { entity ->
+                    val fixed = page.associate { entity ->
                         val place = entity.toDomain() // memo는 도메인에 없으므로 옮겨지지 않는다
-                        entity.id to place.copy(folderId = place.folderId?.takeIf { it in liveFolderIds }).toFields()
+                        entity.id to LegacyDocSanitizer.place(place.copy(folderId = place.folderId?.takeIf { it in liveFolderIds }))
                     }
+                    PageDocs(fixed.mapValues { it.value.value.toFields() }, fixed.fixedFieldsById())
                 })
         }
         if (!state.postsDone) {
@@ -147,12 +161,16 @@ class RoomToFirestoreMigrator(
                     val ids = page.map { it.id }
                     val placeIds = crossRefDao.forPosts(ids).groupBy({ it.postId }, { it.placeId })
                     val candidates = candidateDao.forPosts(ids).groupBy { it.postId }
-                    page.associate { entity ->
-                        entity.id to entity.toDomain().toFields(
-                            placeIds = placeIds[entity.id].orEmpty().sorted(),
-                            candidates = candidates[entity.id].orEmpty().map { it.toDomain() },
-                        )
-                    }
+                    val fixed = page.associate { entity -> entity.id to LegacyDocSanitizer.post(entity.toDomain()) }
+                    PageDocs(
+                        fixed.mapValues { (id, sanitized) ->
+                            sanitized.value.toFields(
+                                placeIds = placeIds[id].orEmpty().sorted(),
+                                candidates = candidates[id].orEmpty().map { it.toDomain() },
+                            )
+                        },
+                        fixed.fixedFieldsById(),
+                    )
                 })
         }
 
@@ -166,6 +184,7 @@ class RoomToFirestoreMigrator(
             posts = done.postCount,
             durationMillis = (nowMillis() - done.startedAtMillis).coerceAtLeast(0L),
             skipped = done.skipped.size,
+            sanitized = done.sanitized.size,
         )
     }
 
@@ -188,7 +207,7 @@ class RoomToFirestoreMigrator(
         readIds: suspend (afterId: String) -> List<String>,
         readOne: suspend (id: String) -> T?,
         idOf: (T) -> String,
-        toFields: suspend (List<T>) -> Map<String, Map<String, Any?>>,
+        toFields: suspend (List<T>) -> PageDocs,
     ) {
         var cursor = startCursor
         var pageIndex = 0
@@ -196,8 +215,9 @@ class RoomToFirestoreMigrator(
             val read = readPageIsolating(cursor, readPage, readIds, readOne, idOf)
             if (read.lastId == null) break
             val page = read.rows
-            val skipped = read.unreadableIds.map { skippedEntry(kind, it, UNREADABLE) }.toMutableList()
-            val fieldsById = if (page.isEmpty()) emptyMap() else toFields(page)
+            val skipped = read.unreadableIds.map { SkippedDoc(it, UNREADABLE) }.toMutableList()
+            val docs = if (page.isEmpty()) PageDocs(emptyMap(), emptyMap()) else toFields(page)
+            val fieldsById = docs.fields
 
             // 서버에 이미 있는 문서는 건너뛴다(덮어쓰지 않는다). 서버에서 직접 읽어야 해서 오프라인이면 여기서 IOException이다.
             val existing = if (fieldsById.isEmpty()) emptySet() else readServerIdsAmong(collection, fieldsById.keys)
@@ -206,14 +226,32 @@ class RoomToFirestoreMigrator(
             hooks.afterCommit(kind, pageIndex)
 
             cursor = read.lastId
-            // 처리한 개수에는 건너뛴 문서를 넣지 않는다(건너뛴 건 따로 센다).
-            store.saveProgress(uid, kind, cursor, read.totalRows - skipped.size, skipped)
+            // 처리한 개수에는 건너뛴 문서를 넣지 않는다(건너뛴 건 따로 센다). 고쳐서 옮긴 문서는 이번에 실제로 쓴 것 중
+            // 끝내 거부되지 않은 것만 센다(이미 서버에 있던 문서는 이전에 센 것이다).
+            val skippedIds = skipped.map { it.id }.toSet()
+            val sanitized = toWrite.map { it.first }.filter { it !in skippedIds }.mapNotNull { id ->
+                docs.sanitized[id]?.let { fields -> "${kind.name}:$id:${fields.joinToString(",")}" }
+            }
+            sanitized.forEach { Log.i(TAG, "이전에서 규칙 상한에 맞게 고침: $it") }
+            store.saveProgress(
+                uid, kind, cursor, read.totalRows - skipped.size,
+                skipped = skipped.map { skippedEntry(kind, it.id, it.reason) },
+                sanitized = sanitized,
+            )
             hooks.afterCheckpoint(kind, pageIndex)
             pageIndex++
             if (read.totalRows < batchSize) break
         }
         store.markKindDone(uid, kind)
     }
+
+    /** 쓸 문서(ID → 필드)와, 그중 규칙 상한에 맞게 고친 문서(ID → 고친 필드 이름). */
+    private class PageDocs(val fields: Map<String, Map<String, Any?>>, val sanitized: Map<String, List<String>>)
+
+    private class SkippedDoc(val id: String, val reason: String)
+
+    private fun <T> Map<String, Sanitized<T>>.fixedFieldsById(): Map<String, List<String>> =
+        filterValues { it.changed }.mapValues { it.value.fixedFields }
 
     private class PageRead<T>(val rows: List<T>, val unreadableIds: List<String>, val lastId: String?) {
         val totalRows get() = rows.size + unreadableIds.size
@@ -264,7 +302,7 @@ class RoomToFirestoreMigrator(
         kind: MigrationKind,
         collection: CollectionReference,
         docs: List<Pair<String, Map<String, Any?>>>,
-        skipped: MutableList<String>,
+        skipped: MutableList<SkippedDoc>,
     ) {
         if (docs.isEmpty()) return
         hooks.beforeCommit(kind, docs.map { it.first })
@@ -284,7 +322,7 @@ class RoomToFirestoreMigrator(
                 val id = docs.single().first
                 // ID와 사유 코드만 남긴다. 캡션 같은 내용은 남기지 않는다.
                 Log.w(TAG, "이전에서 건너뜀: ${kind.name} $id (${e.code.name})")
-                skipped += skippedEntry(kind, id, e.code.name)
+                skipped += SkippedDoc(id, e.code.name)
                 return
             }
             val half = docs.size / 2
@@ -304,20 +342,29 @@ class RoomToFirestoreMigrator(
     private suspend fun isAccountWideDenial(uid: String): Boolean {
         if (denialIsDocumentSpecific) return false
         val ref = firestore.posts(uid).document(PROBE_ID)
-        val probe = SavedPost(
-            id = PROBE_ID, shortcode = null, instagramUrl = "https://www.instagram.com/p/$PROBE_ID/", caption = null,
-            thumbnailUrl = null, status = ResolveStatus.RESOLVED, extractedCount = 0, createdAt = nowMillis(),
-        )
+        // 쓰기 **전에** 표시를 남긴다 — 쓴 직후 앱이 죽어도 다음 이전 시작 때 이 표시를 보고 문서를 지운다.
+        store.setProbePending(uid, true)
         try {
-            withTimeoutOrNull(COMMIT_TIMEOUT_MILLIS) { ref.set(probe.toFields()).await(); true }
-                ?: throw IOException("프로브 확정을 받지 못했다(시간 초과)")
+            withTimeoutOrNull(COMMIT_TIMEOUT_MILLIS) { ref.set(probeFields(nowMillis())).await(); true }
+                ?: throw IOException("프로브 확정을 받지 못했다(시간 초과)") // 서버에 뒤늦게 들어갈 수 있으니 표시를 남겨 둔다
         } catch (e: FirebaseFirestoreException) {
-            if (isPermanentRejection(e)) return true // 정상 문서도 거부된다 → 계정 전체
+            if (isPermanentRejection(e)) {
+                store.setProbePending(uid, false) // 거부됐으니 문서는 없다
+                return true // 정상 문서도 거부된다 → 계정 전체
+            }
             throw e
         }
-        runCatching { withTimeoutOrNull(COMMIT_TIMEOUT_MILLIS) { ref.delete().await(); true } }
+        hooks.afterProbeWritten()
+        deleteProbe(uid)
         denialIsDocumentSpecific = true
         return false
+    }
+
+    /** 프로브 문서를 지운다. 서버 확정을 받은 뒤에만 표시를 지운다(못 받으면 던져서 다음 시작 때 다시 지운다). */
+    private suspend fun deleteProbe(uid: String) {
+        withTimeoutOrNull(COMMIT_TIMEOUT_MILLIS) { firestore.posts(uid).document(PROBE_ID).delete().await(); true }
+            ?: throw IOException("프로브 삭제 확정을 받지 못했다(시간 초과)")
+        store.setProbePending(uid, false)
     }
 
     /** 규칙 거부(PERMISSION_DENIED)나 문서가 잘못됨(INVALID_ARGUMENT: 크기 초과 등)은 다시 시도해도 같다. 그 밖의 오류는 일시적이다. */
@@ -354,10 +401,20 @@ class RoomToFirestoreMigrator(
         return snapshot.documents.mapTo(HashSet()) { it.id }
     }
 
-    private companion object {
-        const val TAG = "EonjeMigration"
+    companion object {
+        /**
+         * 오류 감별용 프로브 문서의 필드. 게시물 문서로 쓰되 RESOLVED에 장소 연결이 없다 - 인박스(미확정만), 홈·지도·위젯(장소 컬렉션과
+         * 장소별 게시물 묶음)에 안 보인다. 앱의 매퍼로 만들므로 규칙 테스트가 이 문서를 그대로 써서 규칙을 통과하는지 확인한다.
+         */
+        internal fun probeFields(nowMillis: Long): Map<String, Any?> = SavedPost(
+            id = PROBE_ID, shortcode = null, instagramUrl = "https://www.instagram.com/p/$PROBE_ID/", caption = null,
+            thumbnailUrl = null, status = ResolveStatus.RESOLVED, extractedCount = 0, createdAt = nowMillis,
+        ).toFields()
+
+        internal const val PROBE_ID = "migration-probe"
+
+        private const val TAG = "EonjeMigration"
         const val UNREADABLE = "UNREADABLE"
-        const val PROBE_ID = "migration-probe"
         const val WHERE_IN_LIMIT = 30
         const val PARALLEL_QUERIES = 8
         const val COMMIT_TIMEOUT_MILLIS = 60_000L

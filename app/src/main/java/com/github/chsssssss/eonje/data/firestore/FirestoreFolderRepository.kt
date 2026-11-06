@@ -2,6 +2,7 @@ package com.github.chsssssss.eonje.data.firestore
 
 import com.github.chsssssss.eonje.di.ApplicationScope
 import com.github.chsssssss.eonje.domain.model.Folder
+import com.github.chsssssss.eonje.domain.model.FolderName
 import com.github.chsssssss.eonje.domain.repository.FolderRepository
 import com.github.chsssssss.eonje.domain.repository.NotSignedInException
 import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
@@ -60,13 +61,13 @@ class FirestoreFolderRepository @Inject constructor(
     }
 
     override suspend fun findOrCreateByName(name: String): Folder {
-        val trimmed = name.trim()
+        val trimmed = FolderName.clamp(name.trim())
         findByName(trimmed)?.let { return it }
         return create(Folder(id = UUID.randomUUID().toString(), name = trimmed, createdAt = System.currentTimeMillis()))
     }
 
     override suspend fun createWithAppearance(name: String, color: Int, iconKey: String): Folder {
-        val trimmed = name.trim()
+        val trimmed = FolderName.clamp(name.trim())
         val existing = findByName(trimmed)
         if (existing != null) {
             val uid = requireUid()

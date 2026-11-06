@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.chsssssss.eonje.domain.model.Folder
+import com.github.chsssssss.eonje.domain.model.FolderName
 import com.github.chsssssss.eonje.domain.model.FolderVisuals
 import com.github.chsssssss.eonje.ui.theme.EonjeColors
 import com.github.chsssssss.eonje.ui.theme.Typography
@@ -109,7 +110,8 @@ fun FolderPickerContent(
         ) {
             BasicTextField(
                 value = newFolderName,
-                onValueChange = { newFolderName = it },
+                // 50자를 넘는 입력은 막고(붙여넣기는 50자까지만 들어간다), 아래에 글자 수와 안내를 보여준다.
+                onValueChange = { newFolderName = FolderName.clamp(it) },
                 textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
                 singleLine = true,
                 modifier = Modifier.weight(1f),
@@ -120,6 +122,7 @@ fun FolderPickerContent(
                     inner()
                 },
             )
+            if (newFolderName.isNotEmpty()) FolderNameCounter(newFolderName.length)
             Icon(
                 Icons.Filled.Check,
                 contentDescription = "폴더 추가",
@@ -131,6 +134,7 @@ fun FolderPickerContent(
                     },
             )
         }
+        if (newFolderName.length >= FolderName.MAX_LENGTH) FolderNameLimitNotice()
     }
 
     val target = folderPendingDelete
@@ -374,10 +378,10 @@ fun AddFolderContent(onCreate: (name: String, color: Int, iconKey: String) -> Un
             ) {
                 BasicTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = FolderName.clamp(it) },
                     textStyle = TextStyle(color = EonjeColors.textPrimary, fontSize = Typography.bodyLarge.fontSize),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
                         if (name.isEmpty()) {
                             Text("폴더 이름", style = Typography.bodyLarge, color = EonjeColors.textMuted)
@@ -385,8 +389,10 @@ fun AddFolderContent(onCreate: (name: String, color: Int, iconKey: String) -> Un
                         inner()
                     },
                 )
+                if (name.isNotEmpty()) FolderNameCounter(name.length)
             }
         }
+        if (name.length >= FolderName.MAX_LENGTH) FolderNameLimitNotice()
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("마커 색상", style = Typography.labelMedium, color = EonjeColors.textMuted)
@@ -456,4 +462,26 @@ private fun IconSwatch(icon: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(icon, style = Typography.titleMedium)
     }
+}
+
+
+/** 입력창 오른쪽의 글자 수("12/50"). 상한에 닿으면 강조색으로 바뀐다. */
+@Composable
+private fun FolderNameCounter(length: Int) {
+    Text(
+        "$length/${FolderName.MAX_LENGTH}",
+        style = Typography.labelSmall,
+        color = if (length >= FolderName.MAX_LENGTH) EonjeColors.accent else EonjeColors.textMuted,
+        modifier = Modifier.padding(start = 8.dp),
+    )
+}
+
+/** 상한에 닿아서 더 입력되지 않는다는 안내. */
+@Composable
+private fun FolderNameLimitNotice() {
+    Text(
+        "폴더 이름은 ${FolderName.MAX_LENGTH}자까지 입력할 수 있어요",
+        style = Typography.labelMedium,
+        color = EonjeColors.accent,
+    )
 }
