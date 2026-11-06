@@ -2,6 +2,7 @@ package com.github.chsssssss.eonje.data.firestore
 
 import android.util.Log
 import com.github.chsssssss.eonje.di.ApplicationScope
+import com.github.chsssssss.eonje.domain.repository.UserSession
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -14,7 +15,11 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,7 +35,10 @@ import kotlin.math.min
 class AuthSession @Inject constructor(
     private val auth: FirebaseAuth,
     @ApplicationScope private val scope: CoroutineScope,
-) {
+) : UserSession {
+    // 앱 시작 루프와 SaveSharedPostWorker가 동시에 로그인하면 익명 사용자가 둘 생길 수 있어서 한 번에 하나만 시도한다.
+    private val signInMutex = Mutex()
+
     /** 지금 로그인된 uid. 로그인 전이면 null. */
     val uid: StateFlow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
@@ -45,20 +53,34 @@ class AuthSession @Inject constructor(
     suspend fun awaitUid(timeoutMillis: Long): String? =
         currentUid() ?: withTimeoutOrNull(timeoutMillis) { uid.filterNotNull().first() }
 
+    override fun isSignedIn(): Boolean = auth.currentUser != null
+
+    override suspend fun signInIfNeeded(): Boolean {
+        if (auth.currentUser != null) return true
+        return signInMutex.withLock {
+            if (auth.currentUser != null) return@withLock true
+            try {
+                withTimeout(SIGN_IN_TIMEOUT_MILLIS) { auth.signInAnonymously().await() }
+                true
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "익명 로그인 시간 초과")
+                false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "익명 로그인 실패(${e.javaClass.simpleName})")
+                false
+            }
+        }
+    }
+
     fun startAnonymousSignIn() {
         if (auth.currentUser != null) return
         scope.launch {
             var backoff = INITIAL_BACKOFF_MILLIS
-            while (auth.currentUser == null) {
-                try {
-                    auth.signInAnonymously().await()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "익명 로그인 실패(${e.javaClass.simpleName}) — ${backoff}ms 뒤 다시 시도")
-                    delay(backoff)
-                    backoff = min(backoff * 2, MAX_BACKOFF_MILLIS)
-                }
+            while (!signInIfNeeded()) {
+                delay(backoff)
+                backoff = min(backoff * 2, MAX_BACKOFF_MILLIS)
             }
         }
     }
@@ -67,5 +89,6 @@ class AuthSession @Inject constructor(
         const val TAG = "EonjeAuth"
         const val INITIAL_BACKOFF_MILLIS = 2_000L
         const val MAX_BACKOFF_MILLIS = 60_000L
+        const val SIGN_IN_TIMEOUT_MILLIS = 30_000L
     }
 }

@@ -23,6 +23,7 @@ import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -439,6 +440,28 @@ class FirestoreRepositoriesTest {
         watchdog.join()
 
         if (failure != null) fail("메인 스레드에서 막혔다: $failure (진행: $progress)\n4초 시점 메인 스레드 스택:\n$stackWhenStuck")
+    }
+
+    // ── 로그인 ──
+
+    @Test
+    fun 로그인_전에_동시에_여러_번_불러도_익명_사용자는_하나만_만들어진다() = runBlocking {
+        auth.signOut()
+        val seen = java.util.Collections.synchronizedSet(HashSet<String>())
+        val listener = FirebaseAuth.AuthStateListener { it.currentUser?.uid?.let(seen::add) }
+        auth.addAuthStateListener(listener)
+        try {
+            assertFalse(session.isSignedIn())
+
+            val results = (1..5).map { async(Dispatchers.Default) { session.signInIfNeeded() } }
+                .map { it.await() }
+
+            assertTrue(results.all { it })
+            assertTrue(session.isSignedIn())
+            assertEquals("앱 시작 루프와 Worker가 겹쳐도 uid는 하나다", 1, seen.size)
+        } finally {
+            auth.removeAuthStateListener(listener)
+        }
     }
 
     // ── 도구 ──

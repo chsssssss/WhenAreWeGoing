@@ -26,6 +26,10 @@ import com.github.chsssssss.eonje.domain.repository.PlacesChangedNotifier
 import com.github.chsssssss.eonje.widget.TodayPlaceWidgetUpdater
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
+import com.github.chsssssss.eonje.domain.repository.PostWorkScheduler
+import com.github.chsssssss.eonje.domain.repository.UserSession
+import com.github.chsssssss.eonje.data.firestore.AuthSession
+import com.github.chsssssss.eonje.data.worker.WorkManagerPostWorkScheduler
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -63,6 +67,14 @@ abstract class RepositoryModule {
     @Singleton
     @RoomStore
     abstract fun bindRoomExtractedCandidateRepository(impl: RoomExtractedCandidateRepository): ExtractedCandidateRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUserSession(impl: AuthSession): UserSession
+
+    @Binds
+    @Singleton
+    abstract fun bindPostWorkScheduler(impl: WorkManagerPostWorkScheduler): PostWorkScheduler
 
     @Binds
     @Singleton
