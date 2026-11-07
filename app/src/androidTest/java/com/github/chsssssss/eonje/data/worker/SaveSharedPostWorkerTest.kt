@@ -82,7 +82,7 @@ class SaveSharedPostWorkerTest {
             .setInputData(SaveSharedPostWorker.inputData(url, "ABC123", 1234L))
             .setWorkerFactory(object : WorkerFactory() {
                 override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
-                    SaveSharedPostWorker(appContext, workerParameters, session, useCase)
+                    SaveSharedPostWorker(appContext, workerParameters, session, useCase, com.github.chsssssss.eonje.data.account.AccountOperationGate())
             })
             .build()
     }

@@ -112,6 +112,25 @@ internal fun FirebaseFirestore.commitInChunks(operation: String, ops: List<(Writ
     }
 }
 
+/**
+ * [commitInChunks]와 달리 서버 확정까지 기다린다(계정 삭제처럼 "정말 지워졌는지"가 중요한 곳에서만 쓴다). 오프라인이면 제한 시간 뒤 실패한다.
+ */
+internal suspend fun FirebaseFirestore.commitInChunksAndAwait(
+    operation: String,
+    ops: List<(WriteBatch) -> Unit>,
+    timeoutMillis: Long = 60_000L,
+) {
+    ops.chunked(BATCH_LIMIT).forEach { chunk ->
+        val batch = batch()
+        chunk.forEach { it(batch) }
+        try {
+            withTimeout(timeoutMillis) { batch.commit().await() }
+        } catch (e: TimeoutCancellationException) {
+            throw java.io.IOException("$operation: 서버 확정 시간 초과")
+        }
+    }
+}
+
 internal fun logListenerError(what: String, error: Throwable) {
     val code = (error as? FirebaseFirestoreException)?.code?.name ?: error.javaClass.simpleName
     Log.w(TAG, "$what 리스너 오류: $code")

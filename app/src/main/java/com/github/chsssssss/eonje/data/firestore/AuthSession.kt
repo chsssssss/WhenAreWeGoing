@@ -55,6 +55,8 @@ class AuthSession @Inject constructor(
 
     override fun isSignedIn(): Boolean = auth.currentUser != null
 
+    override fun isAnonymous(): Boolean = auth.currentUser?.isAnonymous ?: true
+
     override suspend fun signInIfNeeded(): Boolean {
         if (auth.currentUser != null) return true
         return signInMutex.withLock {

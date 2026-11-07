@@ -675,6 +675,75 @@ class RoomToFirestoreMigratorTest {
         unresolvedReason = UnresolvedReason.PLACE_NOT_FOUND,
     )
 
+    // ── 영구 종료 플래그(로그아웃·계정 삭제·계정 전환) ──
+
+    @Test
+    fun 영구_종료_플래그가_켜지면_새_익명_uid에서도_Room이_서버로_올라가지_않는다() = runBlocking<Unit> {
+        seed()
+        store.markClosed() // 로그아웃·삭제·전환 직전에 켜진다
+
+        val outcome = migrator().migrate(uid, isAnonymous = true)
+
+        assertEquals(MigrationOutcome.Closed, outcome)
+        assertTrue(serverIds(firestore.folders(uid)).isEmpty())
+        assertTrue(serverIds(firestore.places(uid)).isEmpty())
+        assertTrue(serverIds(firestore.posts(uid)).isEmpty())
+        assertFalse("이전 기록도 시작되지 않는다", store.read().completed)
+        assertEquals("Room은 그대로", 5, db.placeDao().count())
+    }
+
+    @Test
+    fun 영구_종료_플래그는_이전_도중이던_uid에도_적용된다() = runBlocking<Unit> {
+        seed()
+        store.begin(uid, 1L) // 이 uid로 이전을 시작한 기록이 있어도
+        store.markClosed()
+
+        assertEquals(MigrationOutcome.Closed, migrator().migrate(uid, isAnonymous = true))
+        assertTrue(serverIds(firestore.places(uid)).isEmpty())
+    }
+
+    @Test
+    fun 영구_종료_플래그는_begin과_markCompleted로_지워지지_않는다() = runBlocking<Unit> {
+        store.markClosed()
+
+        store.begin("other-uid", 1L)
+        assertTrue(store.read().closed)
+        store.markCompleted("another-uid")
+        assertTrue(store.read().closed)
+    }
+
+    @Test
+    fun 플래그가_없을_때_로그인한_계정이_처음_보는_uid면_이전하지_않는다() = runBlocking<Unit> {
+        seed()
+
+        val outcome = migrator().migrate(uid, isAnonymous = false)
+
+        assertEquals(MigrationOutcome.Closed, outcome)
+        assertTrue(serverIds(firestore.places(uid)).isEmpty())
+    }
+
+    @Test
+    fun 플래그가_없을_때_이전을_시작한_uid가_계정을_연결해도_이어서_끝낸다() = runBlocking<Unit> {
+        seed()
+        store.begin(uid, 1L) // 익명일 때 시작한 이전(uid는 연결해도 그대로)
+
+        val outcome = migrator().migrate(uid, isAnonymous = false)
+
+        assertTrue(outcome is MigrationOutcome.Migrated)
+        assertEquals(5, serverIds(firestore.places(uid)).size)
+    }
+
+    @Test
+    fun 플래그가_없는_기존_흐름은_익명이면_uid가_바뀌어도_처음부터_다시_이전한다() = runBlocking<Unit> {
+        seed()
+        store.begin("old-uid-from-backup", 1L)
+
+        val outcome = migrator().migrate(uid, isAnonymous = true)
+
+        assertTrue(outcome is MigrationOutcome.Migrated)
+        assertEquals(5, serverIds(firestore.places(uid)).size)
+    }
+
     private fun migrator(batchSize: Int = 499, hooks: MigrationHooks = MigrationHooks.None) = RoomToFirestoreMigrator(
         firestore, db.folderDao(), db.placeDao(), db.savedPostDao(), db.postPlaceCrossRefDao(), db.extractedCandidateDao(),
         store, PlacesChangedNotifier { notified++ }, batchSize, hooks, System::currentTimeMillis,

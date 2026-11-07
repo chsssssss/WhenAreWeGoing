@@ -13,6 +13,7 @@ import androidx.work.WorkRequest
 import androidx.work.WorkerParameters
 import com.github.chsssssss.eonje.data.analytics.Events
 import com.github.chsssssss.eonje.data.migration.MigrationOutcome
+import com.github.chsssssss.eonje.data.migration.RoomMigrationStateStore
 import com.github.chsssssss.eonje.data.migration.RoomToFirestoreMigrator
 import com.github.chsssssss.eonje.domain.repository.UserSession
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -36,15 +37,18 @@ class RoomMigrationWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val userSession: UserSession,
     private val migrator: RoomToFirestoreMigrator,
+    private val migrationStore: RoomMigrationStateStore,
     private val analytics: FirebaseAnalytics,
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        // 영구 종료 플래그가 있으면(로그아웃·계정 삭제·전환 뒤) 로그인도 시도하지 않고 끝낸다.
+        if (migrationStore.read().closed) return Result.success()
         if (!userSession.signInIfNeeded()) return Result.retry()
         val uid = userSession.currentUid() ?: return Result.retry()
 
         return try {
-            val outcome = migrator.migrate(uid, onStarted = { analytics.logEvent(Events.ROOM_MIGRATION_STARTED, null) })
+            val outcome = migrator.migrate(uid, isAnonymous = userSession.isAnonymous(), onStarted = { analytics.logEvent(Events.ROOM_MIGRATION_STARTED, null) })
             if (outcome is MigrationOutcome.Migrated) {
                 analytics.logEvent(Events.ROOM_MIGRATION_COMPLETED) {
                     param(Events.Param.FOLDER_COUNT, outcome.folders.toLong())

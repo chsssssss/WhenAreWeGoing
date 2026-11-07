@@ -52,12 +52,16 @@ internal object PlaceSyncPolicy {
 interface PlaceSyncStore {
     fun lastFullSyncMillis(uid: String): Long?
     fun markFullSync(uid: String, millis: Long)
+
+    /** 기록을 모두 지운다(로그아웃·계정 삭제 뒤). */
+    fun clear()
 }
 
 class InMemoryPlaceSyncStore : PlaceSyncStore {
     private val map = ConcurrentHashMap<String, Long>()
     override fun lastFullSyncMillis(uid: String): Long? = map[uid]
     override fun markFullSync(uid: String, millis: Long) { map[uid] = millis }
+    override fun clear() = map.clear()
 }
 
 @Singleton
@@ -69,6 +73,10 @@ class SharedPrefsPlaceSyncStore @Inject constructor(@ApplicationContext context:
 
     override fun markFullSync(uid: String, millis: Long) {
         prefs.edit().putString(KEY_UID, uid).putLong(KEY_LAST_FULL_SYNC, millis).apply()
+    }
+
+    override fun clear() {
+        prefs.edit().clear().apply()
     }
 
     companion object {

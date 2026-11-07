@@ -36,6 +36,9 @@ sealed interface MigrationOutcome {
     /** Room이 비어 있어서(신규 설치) 옮길 것 없이 바로 완료로 표시했다. */
     data object NothingToMigrate : MigrationOutcome
 
+    /** 영구 종료 플래그가 켜져 있거나(로그아웃·삭제·전환 뒤), 익명이 아닌 다른 uid라서 이전하지 않았다. Room은 그대로다. */
+    data object Closed : MigrationOutcome
+
     /** 처리한 개수는 이어하기 전에 끝낸 것까지 합친 값이다(이미 서버에 있어서 건너뛴 문서 포함). [durationMillis]는 처음 시작부터 끝까지의 벽시계 시간이다. */
     data class Migrated(
         val folders: Int,
@@ -104,8 +107,13 @@ class RoomToFirestoreMigrator(
     )
 
     /** [onStarted]는 이 uid로 새로 시작할 때(이어하기가 아닐 때) 한 번 불린다. */
-    suspend fun migrate(uid: String, onStarted: () -> Unit = {}): MigrationOutcome {
+    suspend fun migrate(uid: String, isAnonymous: Boolean = true, onStarted: () -> Unit = {}): MigrationOutcome {
         var state = store.read()
+        // 영구 종료 플래그가 우선이다: 켜져 있으면 무조건 건너뛴다(uid·익명 여부와 무관).
+        if (state.closed) return MigrationOutcome.Closed
+        // 플래그가 없을 때의 안전망: 로그인한 계정(비익명)이 처음 보는 uid면 이전하지 않는다. 이전은 익명 상태이거나, 이미 이 uid로
+        // 진행·완료한 기록이 있을 때(계정 연결은 uid를 바꾸지 않는다)만 한다.
+        if (!isAnonymous && state.uid != uid) return MigrationOutcome.Closed
         // 지난번에 프로브 문서를 쓰고 지웠다는 확인을 못 받은 채 끝났다면(앱 종료·시간 초과) 먼저 지운다.
         if (state.uid == uid && state.probePending) {
             deleteProbe(uid)

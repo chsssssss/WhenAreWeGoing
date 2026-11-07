@@ -55,6 +55,12 @@ data class MigrationState(
     val sanitized: Set<String> = emptySet(),
     /** 오류 감별용 프로브 문서를 쓰기 시작했는데 지웠다는 확인이 아직 없다. 이전을 시작할 때 이 값이 남아 있으면 먼저 지운다. */
     val probePending: Boolean = false,
+    /**
+     * **영구 종료 플래그**(uid와 무관): 로그아웃·계정 삭제·다른 계정으로 전환을 하면 켜지고 다시는 꺼지지 않는다.
+     * 켜져 있으면 Room 원본을 Firestore로 올리는 이전은 무조건 건너뛴다 — 안 그러면 새 uid(익명)에서 uid가 다르다는 이유로
+     * 처음부터 다시 이전해서, 사용자가 지운 데이터나 다른 계정의 데이터가 Room 원본에서 되살아난다.
+     */
+    val closed: Boolean = false,
 ) {
     /** 건너뛴 게시물 ID. */
     val skippedPostIds: Set<String> get() = skipped.mapNotNull { entry ->
@@ -99,13 +105,20 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it.toState() }
 
-    /** 이 uid로 새로 시작한다. 이전 uid의 진행 기록은 버린다. */
+    /** 이 uid로 새로 시작한다. 이전 uid의 진행 기록은 버린다(영구 종료 플래그는 지우지 않는다). */
     suspend fun begin(uid: String, nowMillis: Long) {
         dataStore.edit { prefs ->
+            val closed = prefs[KEY_CLOSED] ?: false
             prefs.clear()
+            if (closed) prefs[KEY_CLOSED] = true
             prefs[KEY_UID] = uid
             prefs[KEY_STARTED_AT] = nowMillis
         }
+    }
+
+    /** 영구 종료 플래그를 켠다. 되돌리지 않는다. 로그아웃·계정 삭제·계정 전환 **직전에** 부른다(새 uid로 이전이 도는 틈이 없게). */
+    suspend fun markClosed() {
+        dataStore.edit { prefs -> prefs[KEY_CLOSED] = true }
     }
 
     /** [cursor]까지 서버에 확정됐고 그중 [processed]개를 처리했다. 서버 확정 **뒤에** 부른다. */
@@ -152,7 +165,9 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
     suspend fun markCompleted(uid: String) {
         dataStore.edit { prefs ->
             if (prefs[KEY_UID] != uid) {
+                val closed = prefs[KEY_CLOSED] ?: false
                 prefs.clear()
+                if (closed) prefs[KEY_CLOSED] = true
                 prefs[KEY_UID] = uid
             }
             prefs[KEY_COMPLETED] = true
@@ -175,6 +190,7 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         skipped = this[KEY_SKIPPED] ?: emptySet(),
         sanitized = this[KEY_SANITIZED] ?: emptySet(),
         probePending = this[KEY_PROBE_PENDING] ?: false,
+        closed = this[KEY_CLOSED] ?: false,
     )
 
     private companion object {
@@ -194,5 +210,6 @@ class RoomMigrationStateStore(private val dataStore: DataStore<Preferences>) {
         val KEY_SKIPPED = stringSetPreferencesKey("skipped_docs")
         val KEY_SANITIZED = stringSetPreferencesKey("sanitized_docs")
         val KEY_PROBE_PENDING = booleanPreferencesKey("probe_pending")
+        val KEY_CLOSED = booleanPreferencesKey("legacy_room_migration_closed")
     }
 }

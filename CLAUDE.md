@@ -26,7 +26,7 @@
 | 아키텍처 | MVVM + UDF, StateFlow 기반 단일 UiState |
 | DI | Hilt |
 | 데이터 원본 | **Firestore**(named FirebaseApp `wherewegoing`, 영구 캐시 20MB) — 개인 데이터는 전부 `users/{uid}` 아래 |
-| 로그인 | Firebase Auth 익명 로그인(named 앱 `wherewegoing`). 계정 UI는 없다 |
+| 로그인 | Firebase Auth 익명 로그인이 기본(named 앱 `wherewegoing`, 로그인을 강제하지 않는다). 설정에서 **선택적으로 Google 계정을 연결**할 수 있다(`linkWithCredential`, uid 유지 — "계정 연결·로그아웃·삭제" 참고) |
 | 로컬 DB | Room — **읽기 전용 레거시**. 업데이트 전 사용자의 데이터를 Firestore로 1회 옮기려고 남겨둔 것(다음 버전에서 제거 예정) |
 | 네트워크 | Retrofit + OkHttp + kotlinx.serialization (카카오 로컬) + Firebase Functions(계정명·캡션 조회) + Firestore |
 | 캡션 파싱 (AI) | 지원 기기는 ML Kit GenAI(Gemini Nano) 온디바이스 우선 시도, 아니면 Firebase AI Logic(Gemini Flash 무료 티어, App Check 필수)으로 폴백 |
@@ -174,7 +174,7 @@ enum class UnresolvedReason {
 | HomeScreen | 지도 + 커스텀 바텀시트(목록/상세 모드). 장소 상세는 별도 화면이 아니라 이 시트의 상세 모드로 통합돼 있다(과거 PlaceDetailScreen은 삭제됨) |
 | InboxScreen | 미확정 게시물 카드 목록. 카드별 "후보 N곳" / "직접 찾기" 칩 |
 | ResolveScreen | 단일/다중 모드. 위쪽 원본(열기 가능), 아래쪽 검색. 폴더 선택(선택사항, 다중 모드는 일괄 배정) |
-| SettingsScreen | 화면 테마(시스템 설정/라이트/다크), 사용법(온보딩 다시 보기), 개인정보처리방침 링크, 버전 정보 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어낸 뒤, 8단계에서 다시 채움) |
+| SettingsScreen | 화면 테마(시스템 설정/라이트/다크), **계정**(Google 연결·로그아웃·계정/데이터 삭제), 사용법(온보딩 다시 보기), 개인정보처리방침 링크, 버전 정보 (5단계에서 계정 관리·동기화 주기·토큰 상태를 걷어낸 뒤, 8단계에서 다시 채움) |
 | OnboardingScreen | 첫 실행 시 한 번 뜨는 3장 안내. 홈 빈 상태 카드·설정 "사용법"에서 다시 볼 수 있다. 하단 네비게이션 없음 |
 
 하단 네비게이션 3탭: 홈 / 인박스(배지) / 설정
@@ -384,7 +384,7 @@ enum class UnresolvedReason {
 - [x] `data_extraction_rules.xml`/`backup_rules.xml`에 `files/thumbnails` 제외 규칙 추가 — 기존엔 둘 다 Android Studio 기본 템플릿(주석 처리된 TODO)이라 `allowBackup="true"` 상태에서 `ThumbnailStore`가 받아두는 게시물 이미지까지 Auto Backup(앱당 25MB 한도) 대상이었다. 이미지가 쌓이면 한도를 넘겨 진짜 지켜야 할 Room DB(SavedPost/Place)까지 백업이 조용히 실패할 수 있어서 이미지 캐시만 제외
 - [x] Galaxy Note9(API 29) 실기기에 디버그 빌드 설치해 테마 전환(즉시 반영+재실행 후 유지 확인)·개인정보처리방침 링크(브라우저 선택 창 정상 표시)·문의하기(메일 작성 화면에 제목 정상 채워짐)·인박스 화면까지 스모크 테스트, logcat에 에러 없음 확인(2026-09-22)
 
-**스토어 출시 관련, 코드로 처리되지 않는 항목** — Play Console에서 별도로 해야 함: 개인정보처리방침 URL을 앱 콘텐츠(App content) 섹션에 등록, 데이터 안전(Data safety) 설문 작성(캡션·이미지·위치 등 어떤 데이터를 어떻게 쓰는지), 타겟 연령층·콘텐츠 등급 설문. 이 앱은 로그인/계정 개념이 없어 "계정 삭제" 관련 요구사항은 해당 없음.
+**스토어 출시 관련, 코드로 처리되지 않는 항목** — Play Console에서 별도로 해야 함: 개인정보처리방침 URL을 앱 콘텐츠(App content) 섹션에 등록, 데이터 안전(Data safety) 설문 작성(캡션·이미지·위치 등 어떤 데이터를 어떻게 쓰는지), 타겟 연령층·콘텐츠 등급 설문. (12단계에서 계정 연결을 넣으면서 아래 "계정 연결·로그아웃·삭제"가 필요해졌다 — 앱 안 삭제는 구현됨, Play 콘솔의 계정 삭제 URL·데이터 안전 설문 갱신은 콘솔 작업) 이 앱은 원래 로그인/계정 개념이 없어 "계정 삭제" 관련 요구사항은 해당 없음.
 
 **출시 전 남은 것 — 실기기 점검 중 발견 (2026-09-22)**
 - [x] 앱 아이콘 교체 — 오렌지 배경(`#E2693D`) + 오프화이트(`#FAF7F2`) 위치핀 안에 북마크 리본이 뚫린 모양으로 교체. 어댑티브 아이콘 배경은 단색 벡터(`drawable/ic_launcher_background.xml`)로 남기고, 포그라운드는 제공받은 원본 PNG에서 배경/글리프 색을 분리해 밀도별(`drawable-mdpi`~`xxxhdpi`) 래스터로 생성 — 북마크 리본 부분은 투명 처리해서 배경색이 그대로 비쳐 보이게 함(원본 디자인과 동일). 레거시 `mipmap-*/ic_launcher(.round).webp`도 같은 방식으로 만든 PNG로 교체(정사각형은 풀블리드, 원형은 원형 마스크 적용). 글리프가 어댑티브 아이콘 세이프존(66/108) 안에 들어오는 것 확인
@@ -434,7 +434,7 @@ enum class UnresolvedReason {
   - 순서 폴더 → 장소 → 게시물. 배치(499개)마다 **서버에 이미 있는 id 확인(덮어쓰지 않음) → 없는 문서만 쓰기 → 서버 확정까지 대기 → 체크포인트 저장**. 끊겨도 확정된 곳부터 이어가고, 이미 옮겨진 문서는 사용자가 Firestore 쪽에서 고쳤어도 Room의 옛 값으로 덮지 않는다
   - 진행 기록은 **uid와 함께** DataStore(`room_migration`)에 저장한다. 자동 백업이 이 파일을 새 기기로 복원해도 거기서 로그인된 uid가 다르면 처음부터 다시 이전한다(같은 uid면 이미 끝난 것). 백업에서 제외하지 않는다 — uid와 짝으로 판단하므로 안전하고, 제외하면 같은 uid에서 불필요한 읽기가 생긴다
   - 필드 변환은 Firestore 저장소와 같은 매퍼를 쓴다. memo는 옮기지 않고, 썸네일 파일은 옮기지 않지만 문서 ID가 Room의 UUID 그대로라서 `{postId}.jpg`가 그대로 연결된다(원격 URL만 저장돼 있던 썸네일은 만료되는 값이라 옮기지 않는다)
-  - **Room 데이터는 지우지 않는다**(정리는 다음 버전). 서버에 쓰기가 확정되지 않은 상태에서는 어떤 경우에도 지우지 않는다
+  - **Room 데이터는 지우지 않는다**(정리는 다음 버전). 서버에 쓰기가 확정되지 않은 상태에서는 어떤 경우에도 지우지 않는다. **예외: 사용자가 설정에서 직접 "계정 삭제/데이터 삭제"를 누른 경우**엔 서버 삭제가 확정된 뒤 로컬 정리 단계에서 Room 테이블을 비운다(`clearAllTables`, 스키마는 그대로). 로그아웃·계정 전환은 Room을 지우지 않는다
   - **이전이 끝나기 전에 막아둔 위험 3가지**: ① 썸네일 고아 정리(`ThumbnailMaintenance`)는 이전이 끝난 뒤에만 한다 — 일부만 옮겨진 상태에서 ID 목록에 없다고 지우면 다시 받을 수 없는 썸네일을 잃는다 ② 캡션 작업은 게시물이 없고 이전이 안 끝났으면 횟수 없이 대기한다(`WaitForMigration`) ③ 공유 중복 확인은 이전이 끝나기 전엔 Room도 shortcode로 본다
   - **홈 안내**: 이전 대상이 있는 사용자(Room에 데이터가 있고 현재 uid로 이전이 안 끝남)에게만 적용된다 — 신규 설치(Room이 비어 있음)엔 영향이 없다. 이전이 끝나기 전엔 "저장된 장소가 없어요"와 빈 상태 카드를 보여주지 않고, 상태가 1.5초 이상 이어질 때만 얇은 배너를 띄운다(이전 중 "기존 데이터를 옮기는 중이에요", 시작 못 함(오프라인·로그인 대기·재시도 대기) "인터넷에 연결되면 기존 데이터를 옮겨요. 데이터는 안전해요"). 상태는 DataStore(`room_migration`)의 uid 기반 완료 값 + Room 데이터 유무 + Worker 상태로만 계산하고 새 서버 호출은 없다(`LegacyMigrationStatus.observePhase`, 판정 함수 `legacyMigrationPhase`)
   - **문제 문서 격리**: 규칙이 거부하는 문서(캡션 상한 초과 등)나 Room에서 읽을 수 없는 행(앱이 모르는 status 문자열을 `Converters`가 `valueOf`로 읽다 예외를 던진다) 하나 때문에 이전이 영영 끝나지 않으면 안 된다. 배치 커밋이 **영구 실패**(`PERMISSION_DENIED`, `INVALID_ARGUMENT`)로 거부되면 배치를 반으로 나눠 다시 커밋하고(정상 문서는 한 번만 쓰인다. 499개를 하나씩 순차로 쓰면 왕복이 499번이라 이분 탐색으로 찾는다), 문서 하나가 남았는데도 거부되면 그 문서만 건너뛰고 `종류:ID:사유`를 DataStore(`room_migration`의 `skipped_docs`)와 로그에 남긴다. **ID와 사유 코드뿐이고 캡션 같은 내용은 남기지 않는다.** 네트워크 오류 같은 **일시적 실패는 격리하지 않고 그대로 재시도**한다. 건너뛴 문서는 Room에 그대로 남아 있고, 모든 문서를 처리하면(건너뛴 것 포함) 완료로 표시해 홈 배너가 사라진다. `room_migration_completed`에 `skipped_count`(숫자만)가 들어간다
@@ -450,6 +450,22 @@ enum class UnresolvedReason {
 - **보안 규칙** (`firestore.rules`, 12단계): `users/{uid}/{folders,places,posts}`만 `request.auth.uid == uid`일 때 허용하고 나머지(users/{uid} 문서 자체·하위 컬렉션·다른 컬렉션)는 거부한다. 쓴 뒤의 문서 전체(`request.resource.data`)를 검사하므로 필드 하나만 고치는 update·`arrayUnion`/`arrayRemove`·WriteBatch도 결과가 올바르면 통과한다. 허용 필드는 `FirestoreMappers`의 `Fields`·`toFields`·`toMap` 출력에서 뽑았다(`hasOnly`). 앱이 null로 저장하는 선택 필드(shortcode, caption, unresolvedReason, resolvedAt, folderId, name, address, latitude, longitude, kakaoPlaceId, category)는 "없거나 null이거나 올바른 값"이다. 한계: 규칙 언어에 반복문이 없어 `candidates` 배열 안 항목의 필드는 검증하지 못한다(크기 500 + 문서 1MiB 한도). 테스트는 `FirestoreRulesTest`(정상 문서는 매퍼 출력 그대로, 거부는 한 군데만 망가뜨림, enum 전체를 써서 규칙과 어긋나면 깨짐). 에뮬레이터는 `firebase.json`의 `firestore.rules`를 로드하고 파일을 고치면 자동으로 다시 읽는다 — **계측 테스트는 항상 규칙이 적용된 상태**였다(2단계부터)
 - **Firestore 콘솔·CLI에서 직접 할 일**(코드로 안 됨, 순서대로): ① 서울 리전(`asia-northeast3`) 프로덕션 모드 DB 생성(리전은 못 바꾼다) → ② **앱 배포 전에** 규칙·인덱스 배포: `firebase deploy --only firestore`(CLI 직접, `firebase login` 후; 프로덕션 모드는 규칙을 배포하기 전엔 모든 접근이 막힌다) → ②-1 **묘비 TTL 정책**(DB 생성 뒤 1회): `gcloud firestore fields ttls update expireAt --collection-group=places --enable-ttl --project=wherewegoing-a5493`(콘솔: Firestore > TTL 정책 > 컬렉션 그룹 `places`, 필드 `expireAt`). 안 켜면 묘비가 영원히 쌓인다(앱 동작엔 문제 없음). TTL 삭제는 만료 후 최대 하루쯤 늦을 수 있다 → ③ Authentication 익명 로그인 켜기 → ④ 예산 알림 + Cloud Monitoring의 Firestore 문서 읽기 수 알림(예: 하루 4만 회 — 예산 알림은 집계가 늦다) → ⑤ App Check는 모니터링 모드로 먼저 켜서 Firestore·Auth 요청의 "확인됨" 비율을 보고, 거의 100%일 때만 시행(enforce)으로 전환. 릴리스(Play Integrity)는 Play에 올린 서명 빌드에서만 토큰이 나오므로 그 전에 시행하면 사용자 전부가 막힌다. 디버그 빌드는 기기별 디버그 토큰 등록 필요
 - **알려진 위험(2단계부터)**: `cachedPostIds()`(썸네일 고아 정리)는 Firestore **캐시**에서 ID를 읽는다. 캐시가 20MB 상한으로 정리(GC)돼 일부 게시물이 캐시에서 빠지면 그 썸네일이 고아로 오판돼 지워질 수 있다. 문서가 작아 거의 안 일어나지만, 캐시 상한을 줄이거나 문서를 크게 만들면 다시 봐야 한다
+
+### 12단계 — 계정 연결·로그아웃·삭제 (브랜치 `feature/firestore`)
+
+익명 uid는 설치마다 달라서 기기를 바꾸거나 앱을 지웠다 깔면 데이터를 잃고, Room 버전은 Auto Backup으로 이걸 버텼기 때문에 선택적 계정 연결을 넣었다. 로그인을 강제하지 않는다 — **F1(공유 저장)은 계정과 무관하게 항상 성공한다.**
+
+- **연결**(설정 "Google로 데이터 백업하기", `AccountRepository.linkWithGoogle`): Credential Manager(`GoogleCredentialFetcher`, `GetSignInWithGoogleOption`)로 Google ID 토큰을 받아 익명 사용자에 `linkWithCredential`한다. **uid가 그대로**라서 데이터를 옮기지 않는다. 이미 다른 uid에 연결된 계정이면 `LinkResult.Collision`(자격 증명은 `pendingCollisionCredential`에 보관)
+  - 웹 클라이언트 ID(`GOOGLE_WEB_CLIENT_ID`)가 비어 있으면 설정의 계정 섹션을 숨긴다(앱은 정상 동작)
+  - **Room 이전이 끝나기 전엔 연결 버튼을 막는다**("기존 데이터를 옮기는 중이에요", `LegacyMigrationStatus.observePhase() != NOT_NEEDED`) — 일부만 옮겨진 데이터가 계정과 섞이면 나머지가 영영 안 옮겨진다
+- **Room 이전 영구 종료 플래그** (`legacy_room_migration_closed`, `room_migration` DataStore, uid와 무관): 로그아웃·계정 삭제·다른 계정으로 전환 **직전에** 켜고 다시 끄지 않는다(`RoomMigrationStateStore.markClosed`). 켜져 있으면 `RoomToFirestoreMigrator`(`MigrationOutcome.Closed`)와 `RoomMigrationWorker`(로그인도 안 하고 종료)가 **무조건** 건너뛴다 — 안 그러면 새 익명 uid에서 "uid가 다르다"며 Room 원본을 처음부터 다시 올려 지운 데이터가 되살아난다. `begin`·`markCompleted`의 `clear()`도 이 플래그는 보존한다. 플래그가 없을 때만 기존 규칙(저장된 uid와 다르면 처음부터 이전)이 적용되고, 거기에 안전망이 하나 붙는다: **로그인한 비익명 사용자가 처음 보는 uid면 이전하지 않는다**(`isAnonymous = false`). 영구 종료 뒤 `LegacyMigrationStatus`는 이전 대상 없음·완료로 본다(홈 안내·중복 판단·고아 정리)
+- **로그아웃**(`signOut`): 플래그 → `auth.signOut()` → 썸네일 파일·`PlaceSyncStore` 정리 → 새 익명 로그인. 서버 데이터는 그대로, Room은 안 지운다. 익명이면 아무것도 안 한다
+- **계정/데이터 삭제**(`deleteAccount`): 백그라운드 일시정지(`AccountWorkControl`: 공유 저장 Worker는 `AccountOperationGate`로 재시도 미룸, 캡션 파싱·Room 이전 Worker는 취소) → 연결된 계정은 재인증(Google 다시 로그인) → `folders`·`places`·`posts`를 서버에서 읽어 전부 삭제(서버 확정까지 await, 묘비 포함)하고 **0건이 나올 때까지 최대 3회 반복**(삭제 중 들어온 문서 대비) → 플래그 → `user.delete()` → 로컬 정리(썸네일·`PlaceSyncStore`·Room 비우기·캐시 정리 예약) → 새 익명 세션. 어느 단계에서 멈췄는지(`DeleteStep`: REAUTH·DATA·ACCOUNT)를 알리고 다시 시도하면 이어서 끝난다. 익명 사용자도 같은 흐름(재인증 없음, 계정 삭제가 거부되면 로그아웃으로 대신)
+  - 문서를 지우려고 읽으므로 읽기가 문서 수만큼 한 번 든다
+- **Firestore 캐시 정리는 다음 콜드 스타트에**: 로그아웃·삭제 뒤 `FirestoreCacheClearFlag`(SharedPreferences `account_local_state`)를 세우고, `EonjeApplication`이 `FirestoreSetup.configure` 직후(어떤 저장소도 만들어지기 전)에 `clearPersistence()`한다(Firestore는 첫 사용 전에만 캐시를 지울 수 있다). 성공해야 표시를 지운다
+- **local.properties**: `GOOGLE_WEB_CLIENT_ID` — **`wherewegoing-a5493` 프로젝트의 OAuth 웹 클라이언트 ID**여야 한다(Firebase Authentication에서 Google 로그인을 켜면 만들어지는 "웹 클라이언트"). Gemini 프로젝트(`fir-gemini-706d3`)의 ID를 넣으면 로그인이 실패한다. 값은 커밋하지 않는다
+- Analytics: `account_link_started/succeeded/failed`(`error_type`: cancelled·network·collision·unknown), `account_signed_out`, `account_deleted`, `account_delete_failed`(`step`). 이메일·uid·내용은 넣지 않는다
+- 자동 테스트는 Auth 에뮬레이터의 가짜 Google ID 토큰(JSON 문자열)으로 한다(`AccountRepositoryTest`, `FirestoreRulesTest`의 연결된 사용자). **실제 Google 로그인과 Credential Manager UI는 자동화하지 않았다**(실기기 수동 확인 필요)
 
 ## 코딩 컨벤션
 

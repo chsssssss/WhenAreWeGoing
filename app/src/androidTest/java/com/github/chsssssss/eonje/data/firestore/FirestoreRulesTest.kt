@@ -199,6 +199,28 @@ class FirestoreRulesTest {
         assertDenied("공유용 최상위 컬렉션은 아직 없다") { firestore.collection("shares").document("x").set(ok).await() }
     }
 
+    // ── 연결된(비익명) 사용자 ──
+
+    @Test
+    fun 계정을_연결한_사용자도_같은_uid로_같은_규칙을_통과하고_다른_사용자는_여전히_막힌다() = runBlocking<Unit> {
+        place("before-link", place().toFields())
+        val token = """{"sub":"rules-linked-${System.nanoTime()}","email":"rules@example.com","email_verified":true}"""
+        auth.currentUser!!.linkWithCredential(com.google.firebase.auth.GoogleAuthProvider.getCredential(token, null)).await()
+        auth.currentUser!!.getIdToken(true).await() // 요청의 auth 토큰이 비익명(provider=google.com)으로 바뀐 걸 반영
+        assertEquals("연결은 uid를 바꾸지 않는다", uid, auth.currentUser!!.uid)
+        assertFalse(auth.currentUser!!.isAnonymous)
+
+        // 연결 전에 쓴 문서를 읽고, 연결 뒤에도 앱이 만드는 모든 종류의 문서를 쓸 수 있다
+        assertTrue(firestore.places(uid).document("before-link").get(Source.SERVER).await().exists())
+        place("after-link", place().toFields())
+        post("after-link", post().toFields(listOf("after-link"), listOf(candidate("after-link", 0, 0))))
+        folder("after-link", folder().toFields())
+        firestore.places(uid).document("after-link").update(placeUpdate("folderId" to "f")).await()
+        // 남의 경로는 연결된 사용자도 막힌다
+        assertDenied("남의 경로에 쓰기") { firestore.places("someone-else").document("x").set(place().toFields()).await() }
+        assertDenied("남의 문서 읽기") { firestore.places("someone-else").document("x").get(Source.SERVER).await() }
+    }
+
     // ── 거부: 문서 모양 ──
 
     @Test

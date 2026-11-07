@@ -24,6 +24,14 @@ class LegacyMigrationPhaseTest {
     }
 
     @Test
+    fun 영구_종료_뒤에는_Room에_데이터가_있어도_이전_대상이_아니다() {
+        val closed = MigrationState(closed = true)
+        // 로그아웃·삭제·전환 뒤: Worker가 돌든 말든, 로그인 전이든 Room을 읽지도 않는다.
+        assertEquals(NOT_NEEDED, runBlocking { legacyMigrationPhase(uid, closed, workerRunning = true, hasRoomData = { error("영구 종료 뒤엔 Room을 읽으면 안 된다") }) })
+        assertEquals(NOT_NEEDED, runBlocking { legacyMigrationPhase(null, closed, workerRunning = false, hasRoomData = { error("읽으면 안 된다") }) })
+    }
+
+    @Test
     fun 이전_전_Room에_데이터가_있고_아직_시작_못_했으면_대기다() {
         assertEquals(WAITING, phase(uid, fresh, running = false, roomHasData = true))
     }

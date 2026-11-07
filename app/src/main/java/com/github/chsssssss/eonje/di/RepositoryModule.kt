@@ -5,6 +5,12 @@ import com.github.chsssssss.eonje.data.firestore.FirestoreExtractedCandidateRepo
 import com.github.chsssssss.eonje.data.firestore.FirestoreFolderRepository
 import com.github.chsssssss.eonje.data.firestore.FirestorePlaceRepository
 import com.github.chsssssss.eonje.data.firestore.FirestoreSavedPostRepository
+import com.github.chsssssss.eonje.data.account.AccountLocalCleanup
+import com.github.chsssssss.eonje.data.account.AccountLocalCleanupImpl
+import com.github.chsssssss.eonje.data.account.AccountRepositoryImpl
+import com.github.chsssssss.eonje.data.account.AccountWorkControl
+import com.github.chsssssss.eonje.data.account.WorkManagerAccountWorkControl
+import com.github.chsssssss.eonje.domain.repository.AccountRepository
 import com.github.chsssssss.eonje.data.firestore.PlaceSyncStore
 import com.github.chsssssss.eonje.data.firestore.SharedPrefsPlaceSyncStore
 import com.github.chsssssss.eonje.data.repository.RoomExtractedCandidateRepository
@@ -71,6 +77,18 @@ abstract class RepositoryModule {
     @Singleton
     @RoomStore
     abstract fun bindRoomExtractedCandidateRepository(impl: RoomExtractedCandidateRepository): ExtractedCandidateRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAccountRepository(impl: AccountRepositoryImpl): AccountRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAccountLocalCleanup(impl: AccountLocalCleanupImpl): AccountLocalCleanup
+
+    @Binds
+    @Singleton
+    abstract fun bindAccountWorkControl(impl: WorkManagerAccountWorkControl): AccountWorkControl
 
     @Binds
     @Singleton

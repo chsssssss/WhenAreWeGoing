@@ -56,6 +56,27 @@ object Events {
     /** 이전 한 번의 시도가 실패해서 다시 시도하게 됨. [Param.ERROR_TYPE] = [MigrationError]. 오류 메시지·내용은 넣지 않는다. */
     const val ROOM_MIGRATION_FAILED = "room_migration_failed"
 
+    /** 설정에서 Google 계정 연결을 시작함. */
+    const val ACCOUNT_LINK_STARTED = "account_link_started"
+
+    /** 계정 연결 성공(uid 유지). */
+    const val ACCOUNT_LINK_SUCCEEDED = "account_link_succeeded"
+
+    /** 계정 연결 실패. [Param.ERROR_TYPE] = [AccountError]. 이메일·uid는 넣지 않는다. */
+    const val ACCOUNT_LINK_FAILED = "account_link_failed"
+
+    /** 이 기기의 데이터를 계정에 합침(충돌 로그인). [Param.FOLDER_COUNT], [Param.PLACE_COUNT], [Param.POST_COUNT] — 개수만. */
+    const val ACCOUNT_MERGE_COMPLETED = "account_merge_completed"
+
+    /** 로그아웃함. */
+    const val ACCOUNT_SIGNED_OUT = "account_signed_out"
+
+    /** 계정(또는 익명 데이터) 삭제를 끝냄. */
+    const val ACCOUNT_DELETED = "account_deleted"
+
+    /** 계정 삭제가 중간에 멈춤. [Param.STEP] = 멈춘 단계(reauth·data·account). */
+    const val ACCOUNT_DELETE_FAILED = "account_delete_failed"
+
     object Param {
         const val FOLDER_COUNT = "folder_count"
         const val PLACE_COUNT = "place_count"
@@ -81,6 +102,14 @@ object Events {
     object WidgetTarget {
         const val PLACE = "place"
         const val EMPTY = "empty"
+    }
+
+    /** 계정 연결 실패 원인의 종류(예외 이름·메시지는 남기지 않는다). */
+    object AccountError {
+        const val CANCELLED = "cancelled"
+        const val NETWORK = "network"
+        const val COLLISION = "collision"
+        const val UNKNOWN = "unknown"
     }
 
     /** 이전 실패 원인의 종류(예외 이름·메시지는 남기지 않는다). */

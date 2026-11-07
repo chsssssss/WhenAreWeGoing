@@ -90,6 +90,11 @@ class ThumbnailStore internal constructor(
         return if (file.isFile && file.length() > 0) "file://${file.absolutePath}" else null
     }
 
+    /** 받아둔 썸네일을 전부 지운다(로그아웃·계정 삭제). */
+    fun clearAll() {
+        dir.listFiles()?.forEach { if (it.isFile) it.delete() }
+    }
+
     /** 게시물 삭제 시 같이 정리한다 — 안 만들어졌어도(다운로드 실패) 조용히 넘어간다. */
     fun deleteAll(keys: List<String>) {
         keys.forEach { File(dir, "$it.jpg").delete() }

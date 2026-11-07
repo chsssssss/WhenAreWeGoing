@@ -1,5 +1,6 @@
 package com.github.chsssssss.eonje.data.firestore
 
+import com.github.chsssssss.eonje.data.account.FirestoreCacheClearFlag
 import com.github.chsssssss.eonje.data.remote.WHEREWEGOING_FIREBASE_APP_NAME
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -34,5 +35,16 @@ object FirestoreSetup {
             .setLocalCacheSettings(PersistentCacheSettings.newBuilder().setSizeBytes(CACHE_SIZE_BYTES).build())
             .build()
         connectFirebaseEmulators(FirebaseAuth.getInstance(app), firestore)
+    }
+
+    /**
+     * 로그아웃·계정 삭제 뒤 "다음 콜드 스타트에 캐시를 지운다"고 표시해 둔 경우 지운다. Firestore는 첫 사용 **전에만** 캐시를 지울 수 있어서
+     * 실행 중엔 못 한다 — [configure] 직후, 어떤 저장소도 만들어지기 전에 부른다. 지우기에 성공해야 표시를 없앤다(실패하면 다음에 다시).
+     */
+    fun clearCacheIfRequested(app: FirebaseApp, context: android.content.Context) {
+        if (!FirestoreCacheClearFlag.isRequested(context)) return
+        FirebaseFirestore.getInstance(app).clearPersistence()
+            .addOnSuccessListener { FirestoreCacheClearFlag.clear(context) }
+            .addOnFailureListener { android.util.Log.w("EonjeFirestore", "캐시 정리 실패(${it.javaClass.simpleName}) — 다음 실행에 다시 시도") }
     }
 }

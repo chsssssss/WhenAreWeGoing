@@ -13,6 +13,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkRequest
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.github.chsssssss.eonje.data.account.AccountOperationGate
 import com.github.chsssssss.eonje.domain.repository.UserSession
 import com.github.chsssssss.eonje.domain.usecase.SaveSharedPostUseCase
 import dagger.assisted.Assisted
@@ -33,6 +34,7 @@ class SaveSharedPostWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val userSession: UserSession,
     private val saveSharedPost: SaveSharedPostUseCase,
+    private val accountGate: AccountOperationGate,
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
@@ -40,6 +42,8 @@ class SaveSharedPostWorker @AssistedInject constructor(
         val shortcode = inputData.getString(KEY_SHORTCODE)
         val createdAt = inputData.getLong(KEY_CREATED_AT, System.currentTimeMillis())
 
+        // 계정 삭제 중엔 저장을 미룬다(삭제 중인 계정에 새 문서가 써지지 않게). URL은 사라지면 안 되므로 취소하지 않고 다시 시도로 미룬다.
+        if (accountGate.isActive) return Result.retry()
         if (!userSession.signInIfNeeded()) return Result.retry()
         return try {
             saveSharedPost.saveQueued(url, shortcode, createdAt)

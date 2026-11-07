@@ -101,6 +101,7 @@ class EonjeApplication : Application(), Configuration.Provider {
     private fun initFirestoreAndAuth() {
         val app = FirebaseApp.getApps(this).firstOrNull { it.name == WHEREWEGOING_FIREBASE_APP_NAME } ?: return
         FirestoreSetup.configure(app)
+        FirestoreSetup.clearCacheIfRequested(app, this)
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).authSession().startAnonymousSignIn()
         // 업데이트 전의 Room 데이터를 Firestore로 한 번 옮긴다. 이미 끝났으면 바로 끝나는 가벼운 작업이다.
         RoomMigrationWorker.enqueue(WorkManager.getInstance(this))

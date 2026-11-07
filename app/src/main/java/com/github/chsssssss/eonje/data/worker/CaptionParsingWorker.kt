@@ -13,6 +13,7 @@ import androidx.work.WorkRequest
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.github.chsssssss.eonje.domain.usecase.MatchPostResult
+import com.github.chsssssss.eonje.data.account.AccountOperationGate
 import com.github.chsssssss.eonje.domain.usecase.MatchPostUseCase
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -26,10 +27,13 @@ class CaptionParsingWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val matchPostUseCase: MatchPostUseCase,
+    private val accountGate: AccountOperationGate,
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
         val postId = inputData.getString(KEY_POST_ID) ?: return Result.failure()
+        // 계정 삭제 중엔 문서를 쓰지 않는다(삭제 시작 때 이미 취소했지만, 삭제 중에 새로 예약된 작업은 여기서 미룬다).
+        if (accountGate.isActive) return Result.retry()
         val result = try {
             matchPostUseCase(postId)
         } catch (e: CancellationException) {

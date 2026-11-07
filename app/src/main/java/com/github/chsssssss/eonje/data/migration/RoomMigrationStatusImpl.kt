@@ -55,7 +55,8 @@ class RoomMigrationStatusImpl(
     override suspend fun isComplete(): Boolean {
         val uid = session.currentUid() ?: return false
         val state = store.read()
-        return state.completed && state.uid == uid
+        // 영구 종료 뒤엔 Room의 옛 데이터는 더 이상 "이전 대기 중인 원본"이 아니다(중복 판단·고아 정리에서 완료로 본다).
+        return state.closed || (state.completed && state.uid == uid)
     }
 
     override suspend fun isLegacyDuplicate(shortcode: String): Boolean {
@@ -76,6 +77,7 @@ class RoomMigrationStatusImpl(
 
 /**
  * 화면용 이전 상태를 정한다.
+ * - 영구 종료 플래그가 켜져 있으면(로그아웃·계정 삭제·전환 뒤) → 없음.
  * - 이 uid로 끝났으면 → 없음. (Room은 읽지 않는다)
  * - Room이 비어 있으면(신규 설치) → 없음. 신규 설치 사용자에겐 아무 영향이 없다.
  * - 이전 대상이 있는데 로그인 전이면(uid 없음) → 대기(Worker가 로그인을 기다리는 중이라도 아직 못 옮기고 있다).
@@ -87,6 +89,7 @@ internal suspend fun legacyMigrationPhase(
     workerRunning: Boolean,
     hasRoomData: suspend () -> Boolean,
 ): LegacyMigrationPhase = when {
+    state.closed -> LegacyMigrationPhase.NOT_NEEDED
     uid != null && state.completed && state.uid == uid -> LegacyMigrationPhase.NOT_NEEDED
     !hasRoomData() -> LegacyMigrationPhase.NOT_NEEDED
     uid == null -> LegacyMigrationPhase.WAITING

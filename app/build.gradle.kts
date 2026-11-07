@@ -59,6 +59,13 @@ android {
             "FIREBASE_API_KEY",
             "\"${localProperties.getProperty("FIREBASE_API_KEY", "")}\""
         )
+        // 계정 연결(Google 로그인)용 OAuth **웹** 클라이언트 ID. wherewegoing 프로젝트(Firebase Authentication의 Google 제공업체가 만든
+        // 웹 클라이언트)의 것이어야 한다 — Gemini 프로젝트의 ID를 넣으면 로그인이 실패한다. 비어 있으면 설정의 계정 섹션이 숨겨진다.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\""
+        )
         // Firebase Analytics는 FirebaseOptions/FirebaseApp을 전혀 보지 않고 오직 `google_app_id` 문자열 리소스만
         // 읽어서 전송 대상 프로젝트를 정한다(play-services-measurement 23.2.0 바이트코드로 확인). google-services
         // 플러그인이 하던 일을 대신해 wherewegoing(Blaze) 앱 ID를 넣는다 — 기본 FirebaseApp이 Gemini 프로젝트여도
@@ -184,6 +191,10 @@ dependencies {
     // 데이터 원본(Firestore)과 익명 로그인 — 둘 다 named FirebaseApp "wherewegoing"에만 붙인다(data/firestore 참고).
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.auth)
+    // 설정 화면의 "Google로 데이터 백업하기"(계정 연결) — Credential Manager로 Google ID 토큰을 받아 Firebase Auth에 연결한다.
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.google.id)
     implementation(libs.firebase.analytics)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.mlkit.genai.prompt)

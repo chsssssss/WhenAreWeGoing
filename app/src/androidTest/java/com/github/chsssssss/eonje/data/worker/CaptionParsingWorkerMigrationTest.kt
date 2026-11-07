@@ -83,7 +83,7 @@ class CaptionParsingWorkerMigrationTest {
             .setRunAttemptCount(runAttempt)
             .setWorkerFactory(object : WorkerFactory() {
                 override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
-                    CaptionParsingWorker(appContext, workerParameters, useCase)
+                    CaptionParsingWorker(appContext, workerParameters, useCase, com.github.chsssssss.eonje.data.account.AccountOperationGate())
             })
             .build()
     }
