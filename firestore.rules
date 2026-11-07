@@ -72,10 +72,13 @@ service cloud.firestore {
 
     // places: name, address, latitude, longitude, kakaoPlaceId, category, status, createdAt, resolvedAt, folderId (Place.toFields)
     //         + postIds[] (이 장소가 나온 게시물 id — 게시물 placeIds의 역방향. 비어 있으면 필드가 없을 수 있다)
+    //         + updatedAt (서버 시각 — 델타 동기화 기준점. 장소를 쓸 때마다 serverTimestamp로 같이 써야 한다)
+    //         + deleted·expireAt (묘비: 삭제된 장소는 지우지 않고 deleted=true로 표시하고, expireAt이 지나면 TTL 정책이 지운다)
     function validPlace(d) {
       return d.keys().hasOnly(['name', 'address', 'latitude', 'longitude', 'kakaoPlaceId', 'category',
-                               'status', 'createdAt', 'resolvedAt', 'folderId', 'postIds'])
-        && d.keys().hasAll(['status', 'createdAt'])
+                               'status', 'createdAt', 'resolvedAt', 'folderId', 'postIds', 'updatedAt', 'deleted', 'expireAt'])
+        && d.keys().hasAll(['status', 'createdAt', 'updatedAt'])
+        && d.updatedAt == request.time
         && optStr(d, 'name', 200)
         && optStr(d, 'address', 300)
         && optStr(d, 'kakaoPlaceId', 100)
@@ -86,7 +89,9 @@ service cloud.firestore {
         && validStatus(d.status)
         && d.createdAt is number
         && optTime(d, 'resolvedAt')
-        && (!('postIds' in d) || (d.postIds is list && d.postIds.size() <= 200));
+        && (!('postIds' in d) || (d.postIds is list && d.postIds.size() <= 200))
+        && (!('deleted' in d) || d.deleted is bool)
+        && (!('expireAt' in d) || (d.expireAt is timestamp && ('deleted' in d) && d.deleted == true));
     }
 
     // posts: instagramUrl, shortcode, caption, status, extractedCount, createdAt, unresolvedReason (SavedPost.toFields)

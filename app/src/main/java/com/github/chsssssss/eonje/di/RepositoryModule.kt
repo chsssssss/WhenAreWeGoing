@@ -5,6 +5,8 @@ import com.github.chsssssss.eonje.data.firestore.FirestoreExtractedCandidateRepo
 import com.github.chsssssss.eonje.data.firestore.FirestoreFolderRepository
 import com.github.chsssssss.eonje.data.firestore.FirestorePlaceRepository
 import com.github.chsssssss.eonje.data.firestore.FirestoreSavedPostRepository
+import com.github.chsssssss.eonje.data.firestore.PlaceSyncStore
+import com.github.chsssssss.eonje.data.firestore.SharedPrefsPlaceSyncStore
 import com.github.chsssssss.eonje.data.repository.RoomExtractedCandidateRepository
 import com.github.chsssssss.eonje.data.repository.RoomFolderRepository
 import com.github.chsssssss.eonje.data.repository.InstagramMetaLookupRepositoryImpl
@@ -69,6 +71,10 @@ abstract class RepositoryModule {
     @Singleton
     @RoomStore
     abstract fun bindRoomExtractedCandidateRepository(impl: RoomExtractedCandidateRepository): ExtractedCandidateRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPlaceSyncStore(impl: SharedPrefsPlaceSyncStore): PlaceSyncStore
 
     @Binds
     @Singleton

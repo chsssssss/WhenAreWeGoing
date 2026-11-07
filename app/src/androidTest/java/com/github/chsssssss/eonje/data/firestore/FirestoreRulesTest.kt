@@ -18,7 +18,10 @@ import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.google.firebase.Timestamp
+import java.util.Date
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -68,7 +71,7 @@ class FirestoreRulesTest {
         assertTrue(place.get(Source.SERVER).await().exists())
         assertEquals(1, firestore.posts(uid).get(Source.SERVER).await().size())
 
-        place.update("folderId", "folder-1").await()
+        place.update(placeUpdate("folderId" to "folder-1")).await()
         post.update("status", ResolveStatus.RESOLVED.name).await()
 
         folder.delete().await(); place.delete().await(); post.delete().await()
@@ -221,6 +224,27 @@ class FirestoreRulesTest {
         assertDenied("장소의 없는 status") { place("a", place().toFields() + ("status" to "GONE")) }
         firestore.posts(uid).document("ok").set(good).await()
         assertDenied("update로 잘못된 status") { firestore.posts(uid).document("ok").update("status", "NOPE").await() }
+    }
+
+    @Test
+    fun 장소는_updatedAt을_서버_시각으로_써야_하고_묘비는_허용된다() = runBlocking<Unit> {
+        val good = place().toFields()
+        place("ok", good)
+        // updatedAt이 없거나, 서버 시각이 아니면(기기가 만든 값) 거부 — 델타 동기화가 그 변경을 놓치지 않게
+        assertDenied("updatedAt 없음") { place("a", good - "updatedAt") }
+        assertDenied("기기가 만든 updatedAt(과거 시각)") { place("a", good + ("updatedAt" to Timestamp(Date(1_000L)))) }
+        assertDenied("숫자 updatedAt") { place("a", good + ("updatedAt" to 1L)) }
+        assertDenied("updatedAt 없이 update(이전 값이 그대로 남는다)") { firestore.places(uid).document("ok").update("folderId", "f").await() }
+        firestore.places(uid).document("ok").update(placeUpdate("folderId" to "f")).await() // updatedAt과 함께면 통과
+
+        // 묘비: 삭제 표시 + 만료 시각. kakaoPlaceId는 남긴다
+        place("tomb", tombstoneFields("k-1", 1_700_000_000_000L))
+        val tomb = firestore.places(uid).document("tomb").get(Source.SERVER).await()
+        assertTrue(tomb.isTombstone())
+        assertNull(tomb.toPlaceOrNull())
+        assertDenied("deleted 없이 expireAt") { place("a", good + ("expireAt" to Timestamp(Date(2_000_000_000_000L)))) }
+        assertDenied("deleted가 bool이 아님") { place("a", good + ("deleted" to "yes")) }
+        assertDenied("expireAt이 timestamp가 아님") { place("a", tombstoneFields("k-1", 1L) + ("expireAt" to "내일")) }
     }
 
     @Test

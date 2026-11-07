@@ -8,7 +8,10 @@ import com.github.chsssssss.eonje.domain.model.PlaceCandidate
 import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.model.UnresolvedReason
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
+import java.util.Date
 
 /**
  * 도메인 모델 ↔ Firestore 문서. 필드는 iOS 앱에서도 같은 구조로 쓸 수 있게 플랫폼 중립적으로 둔다:
@@ -38,6 +41,9 @@ internal object Fields {
     const val RESOLVED_AT = "resolvedAt"
     const val FOLDER_ID = "folderId"
     const val POST_IDS = "postIds"
+    const val UPDATED_AT = "updatedAt"
+    const val DELETED = "deleted"
+    const val EXPIRE_AT = "expireAt"
 
     // folders
     const val COLOR = "color"
@@ -110,10 +116,39 @@ internal fun Place.toFields(): Map<String, Any?> = mapOf(
     Fields.CREATED_AT to createdAt,
     Fields.RESOLVED_AT to resolvedAt,
     Fields.FOLDER_ID to folderId,
+    // 동기화 기준점 전용(서버 시각). 화면에 보이는 시간(createdAt·resolvedAt)은 기기 밀리초를 그대로 쓴다.
+    Fields.UPDATED_AT to FieldValue.serverTimestamp(),
 ) + listOfNotNull(
     // 비어 있는 배열은 필드를 만들지 않는다(게시물의 placeIds와 같은 규칙).
     postIds.takeIf { it.isNotEmpty() }?.let { Fields.POST_IDS to it },
 )
+
+/**
+ * 장소 문서를 고치는 쓰기(update)의 필드 묶음. updatedAt을 빠뜨리면 델타 동기화가 그 변경을 못 받고 규칙도 거부한다 —
+ * 장소를 update하는 곳은 이 함수로 만든다.
+ */
+internal fun placeUpdate(vararg fields: Pair<String, Any?>): Map<String, Any?> =
+    mapOf(*fields, Fields.UPDATED_AT to FieldValue.serverTimestamp())
+
+/**
+ * 삭제된 장소의 묘비 문서. 다른 기기가 "바뀐 장소" 질문으로 삭제를 알게 하려고 문서를 지우지 않고 표시만 남긴다.
+ * 규칙의 필수 필드(status, createdAt)는 채우고, 같은 카카오 장소를 다시 저장할 때 이 문서를 되살릴 수 있게 kakaoPlaceId는 남긴다.
+ * expireAt이 지나면 TTL 정책이 문서를 지운다.
+ */
+internal fun tombstoneFields(kakaoPlaceId: String?, nowMillis: Long): Map<String, Any?> = buildMap {
+    put(Fields.STATUS, ResolveStatus.RESOLVED.name)
+    put(Fields.CREATED_AT, nowMillis)
+    if (kakaoPlaceId != null) put(Fields.KAKAO_PLACE_ID, kakaoPlaceId)
+    put(Fields.DELETED, true)
+    put(Fields.UPDATED_AT, FieldValue.serverTimestamp())
+    put(Fields.EXPIRE_AT, Timestamp(Date(nowMillis + TOMBSTONE_RETENTION_MILLIS)))
+}
+
+internal fun DocumentSnapshot.isTombstone(): Boolean = getBoolean(Fields.DELETED) == true
+
+/** 묘비면 null. 화면·위젯·조회는 삭제된 장소를 "없는 것"으로 본다. */
+internal fun DocumentSnapshot.toPlaceOrNull(localThumbnailUrl: (String) -> String? = { null }): Place? =
+    if (isTombstone()) null else toPlace(localThumbnailUrl)
 
 /** [localThumbnailUrl]은 postIds 순서대로 이 기기에 파일이 있는 첫 게시물의 file:// 경로를 준다(없으면 null). */
 internal fun DocumentSnapshot.toPlace(localThumbnailUrl: (String) -> String? = { null }): Place {

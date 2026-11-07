@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.github.chsssssss.eonje.data.firestore.FirebaseEmulatorEnv
 import com.github.chsssssss.eonje.data.firestore.FirestoreExtractedCandidateRepository
 import com.github.chsssssss.eonje.data.firestore.FirestorePlaceRepository
+import com.github.chsssssss.eonje.data.firestore.placeUpdate
 import com.github.chsssssss.eonje.data.firestore.FirestoreSavedPostRepository
 import com.github.chsssssss.eonje.data.firestore.AuthSession
 import com.github.chsssssss.eonje.data.firestore.folders
@@ -216,7 +217,7 @@ class RoomToFirestoreMigratorTest {
         assertEquals(setOf("place-1", "place-2", "place-3", "place-4"), serverIds(firestore.places(uid)))
 
         // 그 사이 사용자가 Firestore 쪽에서 방금 커밋된 문서를 고쳤다.
-        firestore.places(uid).document("place-3").update("name", "사용자가 고친 이름").await()
+        firestore.places(uid).document("place-3").update(placeUpdate("name" to "사용자가 고친 이름")).await()
 
         migrator(batchSize = 2).migrate(uid)
 
@@ -613,7 +614,7 @@ class RoomToFirestoreMigratorTest {
         seed()
         var started = 0
         migrator().migrate(uid) { started++ }
-        firestore.places(uid).document("place-1").update("name", "고친 이름").await()
+        firestore.places(uid).document("place-1").update(placeUpdate("name" to "고친 이름")).await()
 
         val second = migrator().migrate(uid) { started++ }
 

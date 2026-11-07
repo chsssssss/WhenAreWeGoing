@@ -147,7 +147,7 @@ class FirestoreSavedPostRepository @Inject constructor(
         firestore.commitInChunks(
             "장소의 게시물 연결 정리",
             placeToPostIds.map { (placeId, postIds) ->
-                { batch -> batch.update(firestore.places(uid).document(placeId), Fields.POST_IDS, FieldValue.arrayRemove(*postIds.toTypedArray())) }
+                { batch -> batch.update(firestore.places(uid).document(placeId), placeUpdate(Fields.POST_IDS to FieldValue.arrayRemove(*postIds.toTypedArray()))) }
             },
         )
         // 기기에 받아둔 썸네일 파일도 같이 지운다(기존 동작 그대로).

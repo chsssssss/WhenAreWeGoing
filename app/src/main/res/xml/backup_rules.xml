@@ -4,4 +4,5 @@
 -->
 <full-backup-content>
     <exclude domain="file" path="thumbnails/" />
+    <exclude domain="sharedpref" path="place_sync.xml" />
 </full-backup-content>

@@ -7,8 +7,10 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.ListenSource
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.SnapshotListenOptions
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.WriteBatch
 import kotlinx.coroutines.CancellationException
@@ -39,6 +41,18 @@ internal fun FirebaseFirestore.folders(uid: String): CollectionReference = userD
  */
 internal fun Query.snapshots(): Flow<QuerySnapshot> = callbackFlow {
     val registration = addSnapshotListener { snapshot, error ->
+        if (error != null) close(error) else if (snapshot != null) trySend(snapshot)
+    }
+    awaitClose { registration.remove() }
+}
+
+/**
+ * 로컬 캐시만 듣는 리스너 Flow(서버를 읽지 않아 과금이 없다). 다른 리스너(델타 동기화)가 캐시를 채우거나 내가 쓰면 그 변화가 반영된다.
+ * 캐시가 비어 있으면 빈 결과를 낸다 — 캐시를 채우는 건 [PlaceSync]의 몫이다.
+ */
+internal fun Query.cacheSnapshots(): Flow<QuerySnapshot> = callbackFlow {
+    val options = SnapshotListenOptions.Builder().setSource(ListenSource.CACHE).build()
+    val registration = addSnapshotListener(options) { snapshot, error ->
         if (error != null) close(error) else if (snapshot != null) trySend(snapshot)
     }
     awaitClose { registration.remove() }

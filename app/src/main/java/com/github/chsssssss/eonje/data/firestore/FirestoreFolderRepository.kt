@@ -93,7 +93,7 @@ class FirestoreFolderRepository @Inject constructor(
         val placesInFolder = firestore.places(uid).whereEqualTo(Fields.FOLDER_ID, folderId)
             .getCacheFirst()?.documents.orEmpty()
         val ops = buildList<(WriteBatch) -> Unit> {
-            placesInFolder.forEach { doc -> add { batch -> batch.update(doc.reference, Fields.FOLDER_ID, null) } }
+            placesInFolder.forEach { doc -> add { batch -> batch.update(doc.reference, placeUpdate(Fields.FOLDER_ID to null)) } }
             add { batch -> batch.delete(firestore.folders(uid).document(folderId)) }
         }
         firestore.commitInChunks("폴더 삭제", ops)

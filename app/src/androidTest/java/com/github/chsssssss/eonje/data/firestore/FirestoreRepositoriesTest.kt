@@ -181,8 +181,57 @@ class FirestoreRepositoriesTest {
         assertNotNull("게시물은 지워지지 않는다", posts.findById("post-1"))
         assertEquals(listOf("B"), awaitPlaces { it.size == 1 }.map { it.id })
         firestore.waitForPendingWrites().await()
-        assertNull("서버에서도 장소 문서가 지워졌다", serverDoc("places/A"))
+        // 문서는 지워지지 않고 묘비가 된다(다른 기기가 삭제를 알 수 있게). 내용은 비고 kakaoPlaceId만 남는다.
+        val tomb = serverDoc("places/A")!!
+        assertTrue("묘비 문서: $tomb", tomb.fields().getJSONObject("deleted").getBoolean("booleanValue"))
+        assertTrue(tomb.hasField("expireAt"))
+        assertTrue(tomb.hasField("updatedAt"))
+        assertEquals("kakao-A", tomb.stringField("kakaoPlaceId"))
+        assertFalse("내용 필드는 지워진다", tomb.hasField("name"))
         assertEquals(listOf("B"), serverDoc("posts/post-1")!!.stringArray("placeIds"))
+    }
+
+    @Test
+    fun 삭제한_장소는_화면_위젯_조회에서_안_보이고_같은_카카오_장소를_다시_저장하면_되살아난다() = runBlocking {
+        places.save(place("A", kakaoPlaceId = "kakao-A"))
+        places.save(place("B"))
+        awaitPlaces { it.size == 2 }
+
+        places.delete("A")
+
+        // 화면(캐시 리스너)·위젯(캐시 읽기)·조회 모두 묘비를 없는 것으로 본다.
+        assertEquals(listOf("B"), awaitPlaces { it.size == 1 }.map { it.id })
+        assertEquals(listOf("B"), places.loadCachedAll().map { it.id })
+        assertNull(places.findById("A"))
+        assertNull(places.findByKakaoPlaceId("kakao-A"))
+
+        // 같은 카카오 장소를 다시 저장하면 새 문서가 아니라 그 묘비 문서("A")를 되살린다.
+        val revivedId = places.save(place("brand-new", kakaoPlaceId = "kakao-A"))
+        assertEquals("A", revivedId)
+        assertEquals(setOf("A", "B"), awaitPlaces { it.size == 2 }.map { it.id }.toSet())
+        firestore.waitForPendingWrites().await()
+        val doc = serverDoc("places/A")!!
+        assertFalse("deleted가 사라진다", doc.hasField("deleted"))
+        assertFalse("expireAt이 사라진다(TTL이 되살린 문서를 지우면 안 된다)", doc.hasField("expireAt"))
+        assertNull("brand-new 문서는 만들어지지 않는다", serverDoc("places/brand-new"))
+    }
+
+    @Test
+    fun 다른_기기에서_서버에_생긴_변경은_델타_동기화로_캐시에_들어와_화면에_나온다() = runBlocking {
+        places.save(place("mine"))
+        // 구독 시작: 처음이라 전체 동기화 후 델타 리스너가 붙는다
+        awaitPlaces { list -> list.any { it.id == "mine" } }
+        firestore.waitForPendingWrites().await()
+
+        // 같은 uid의 다른 기기가 서버에 직접 쓴 것(에뮬레이터 REST, 규칙 우회). 기준 시각보다 뒤의 updatedAt.
+        putServerPlace("remote", "다른 기기에서 만든 장소", System.currentTimeMillis() + 3_600_000L)
+
+        val list = awaitPlaces { l -> l.any { it.id == "remote" } }
+        assertEquals("다른 기기에서 만든 장소", list.first { it.id == "remote" }.name)
+
+        // 다른 기기가 지운 것(묘비)도 화면에서 사라진다
+        putServerTombstone("remote", System.currentTimeMillis() + 7_200_000L)
+        assertEquals(listOf("mine"), awaitPlaces { l -> l.none { it.id == "remote" } }.map { it.id })
     }
 
     @Test
@@ -612,6 +661,35 @@ class FirestoreRepositoriesTest {
     }
 
     /** REST로 게시물 문서를 서버에만 만든다(로컬 캐시를 거치지 않는다). */
+    // 같은 uid의 "다른 기기"가 서버에 쓴 장소(에뮬레이터 REST — 규칙 우회, updatedAt은 지정한 시각).
+    private fun putServerPlace(id: String, name: String, updatedAtMillis: Long) = patchServerPlace(
+        id,
+        """{"fields":{"status":{"stringValue":"RESOLVED"},"createdAt":{"integerValue":"5"},"name":{"stringValue":"$name"},
+            "updatedAt":{"timestampValue":"${java.time.Instant.ofEpochMilli(updatedAtMillis)}"}}}""",
+    )
+
+    private fun putServerTombstone(id: String, updatedAtMillis: Long) = patchServerPlace(
+        id,
+        """{"fields":{"status":{"stringValue":"RESOLVED"},"createdAt":{"integerValue":"5"},"deleted":{"booleanValue":true},
+            "updatedAt":{"timestampValue":"${java.time.Instant.ofEpochMilli(updatedAtMillis)}"},
+            "expireAt":{"timestampValue":"${java.time.Instant.ofEpochMilli(updatedAtMillis + TOMBSTONE_RETENTION_MILLIS)}"}}}""",
+    )
+
+    private fun patchServerPlace(id: String, body: String) {
+        val url = URL("http://$HOST:$FIRESTORE_PORT/v1/projects/$PROJECT/databases/(default)/documents/users/$uid/places/$id")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "PATCH"
+        connection.setRequestProperty("Authorization", "Bearer owner")
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+        try {
+            connection.outputStream.use { it.write(body.toByteArray()) }
+            check(connection.responseCode == 200) { "REST 쓰기 실패: ${connection.responseCode}" }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun createServerOnlyPost(id: String) {
         val url = URL("http://$HOST:$FIRESTORE_PORT/v1/projects/$PROJECT/databases/(default)/documents/users/$uid/posts?documentId=$id")
         val connection = url.openConnection() as HttpURLConnection
