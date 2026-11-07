@@ -1,5 +1,6 @@
 package com.github.chsssssss.eonje.di
 
+import com.github.chsssssss.eonje.data.account.PendingLocalCleanup
 import com.github.chsssssss.eonje.data.firestore.AuthSession
 import com.github.chsssssss.eonje.data.firestore.wherewegoingApp
 import com.github.chsssssss.eonje.domain.repository.AccountRepository
@@ -48,6 +49,7 @@ object FirestoreModule {
 interface AuthSessionEntryPoint {
     fun authSession(): AuthSession
     fun accountRepository(): AccountRepository
+    fun pendingLocalCleanup(): PendingLocalCleanup
 
     @ApplicationScope
     fun applicationScope(): CoroutineScope

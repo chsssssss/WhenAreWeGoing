@@ -56,6 +56,7 @@ class AccountRepositoryImpl @Inject constructor(
     private val mergeJournal: AccountMergeJournal,
     private val mergeIo: AccountMergeIo,
     private val deletionHooks: AccountDeletionHooks,
+    private val pendingCleanup: PendingLocalCleanup,
     @ApplicationScope scope: CoroutineScope,
 ) : AccountRepository {
 
@@ -248,6 +249,9 @@ class AccountRepositoryImpl @Inject constructor(
 
             // 3) 새 uid가 생기기 전에 Room 이전을 영구 종료한다.
             migrationStore.markClosed()
+            // 로컬 정리를 시작하기 전에 "정리 대기" 표시를 남긴다(그 시점의 썸네일 이름 목록 포함). 정리가 실패하거나 앱이 죽으면 표시가
+            // 남아서 다음 시작에 이어서 정리한다. 표시를 못 남겨도 아래 정리는 그대로 한다.
+            val pending = pendingCleanup.begin(uid)
 
             // 4) 계정 삭제. 익명 계정이 삭제를 거부하면(오래된 로그인 등) 로그아웃만 한다 — 데이터는 이미 없어서 남는 건 빈 익명 계정뿐이다.
             try {
@@ -265,10 +269,9 @@ class AccountRepositoryImpl @Inject constructor(
             }
 
             // 5) 로컬 정리. 사용자가 직접 요청한 삭제라서 Room의 옛 데이터도 비운다.
-            // 서버 데이터와 계정은 이미 지워졌다 — 로컬 정리가 실패해도 삭제 실패로 보고하지 않는다(다음 시작에 고아 정리가 한다).
-            bestEffort("썸네일·동기화 기록 정리") { cleanup.clearDeviceCaches() }
-            bestEffort("Room 비우기") { cleanup.clearLegacyRoom() }
-            bestEffort("캐시 정리 예약") { cleanup.requestFirestoreCacheClear() }
+            // 서버 데이터와 계정은 이미 지워졌다 — 로컬 정리가 실패해도 삭제 실패로 보고하지 않는다. 표시가 남아 다음 시작에 이어서 정리한다.
+            // 새 익명 계정은 아래에서 로그인을 시작하기 전이고(게이트도 켜져 있다) 정리는 표시에 담긴 파일 이름만 지운다.
+            pendingCleanup.finish(pending)
             _state.value = currentState()
             authSession.startAnonymousSignIn()
             return DeleteResult.Success
@@ -280,16 +283,6 @@ class AccountRepositoryImpl @Inject constructor(
             return DeleteResult.Failed(DeleteStep.DATA)
         } finally {
             workControl.resume()
-        }
-    }
-
-    private suspend fun bestEffort(what: String, block: suspend () -> Unit) {
-        try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "$what 실패(${e.javaClass.simpleName})")
         }
     }
 

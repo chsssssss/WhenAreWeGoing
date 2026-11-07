@@ -5,4 +5,5 @@
 <full-backup-content>
     <exclude domain="file" path="thumbnails/" />
     <exclude domain="sharedpref" path="place_sync.xml" />
+    <exclude domain="file" path="datastore/account_cleanup.preferences_pb" />
 </full-backup-content>

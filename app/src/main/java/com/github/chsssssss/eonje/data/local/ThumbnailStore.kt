@@ -106,6 +106,22 @@ class ThumbnailStore internal constructor(
         }
     }
 
+    /** 지금 있는 썸네일 파일의 게시물 ID(파일 이름의 첫 점 앞부분) 목록. */
+    fun listKeys(): Set<String> = snapshotFiles().filter { it.name.endsWith(".jpg") }.mapTo(HashSet()) { keyOf(it) }
+
+    /**
+     * [keys]의 `{key}.jpg` 중 [cutoffMillis] **이후에 바뀐 적이 없는** 것만 지운다. 이후에 바뀐 파일은 새로 받은 것(같은 게시물을 다시 저장한 다른 계정의
+     * 것일 수 있다)이라 지우지 않는다. 멱등 — 없는 파일은 그냥 넘어간다. 지운 개수를 돌려준다.
+     */
+    fun deleteKeysNotModifiedSince(keys: Set<String>, cutoffMillis: Long): Int {
+        var deleted = 0
+        keys.forEach { key ->
+            val file = File(dir, "$key.jpg")
+            if (file.isFile && file.lastModified() <= cutoffMillis && file.delete()) deleted++
+        }
+        return deleted
+    }
+
     /** 받아둔 썸네일을 전부 지운다(로그아웃·계정 삭제). */
     fun clearAll() {
         dir.listFiles()?.forEach { if (it.isFile) it.delete() }

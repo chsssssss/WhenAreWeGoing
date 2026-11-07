@@ -103,6 +103,10 @@ class EonjeApplication : Application(), Configuration.Provider {
         val app = FirebaseApp.getApps(this).firstOrNull { it.name == WHEREWEGOING_FIREBASE_APP_NAME } ?: return
         FirestoreSetup.initialize(app, this) // 설정 → (요청됐으면) 캐시 정리. 어떤 저장소보다 먼저
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).authSession().startAnonymousSignIn()
+        // 계정 삭제 뒤 끝나지 않은 로컬 정리(표시가 남아 있으면)를 이어서 한다. 표시가 없으면 아무것도 지우지 않는다. Firestore는 쓰지 않는다.
+        EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).let { entry ->
+            entry.applicationScope().launch { entry.pendingLocalCleanup().retryIfPending() }
+        }
         // 계정 합치기가 도중에 끊겼으면(저널이 남아 있으면) 이어서 끝낸다. 없으면 파일 존재 확인뿐이다.
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).let { entry ->
             entry.applicationScope().launch { entry.accountRepository().resumePendingMerge() }

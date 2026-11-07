@@ -76,6 +76,9 @@ class AccountRepositoryTest {
     private lateinit var cleanup: FakeCleanup
     private lateinit var work: FakeWorkControl
     private lateinit var repo: AccountRepositoryImpl
+    private lateinit var pendingStore: PendingLocalCleanupStore
+    private lateinit var retryEvents: MutableList<Boolean>
+    private lateinit var pendingCleanup: PendingLocalCleanup
     private lateinit var journal: AccountMergeJournal
     private lateinit var mergeIo: AccountMergeIo
     private lateinit var thumbDir: File
@@ -94,6 +97,9 @@ class AccountRepositoryTest {
         store = RoomMigrationStateStore(PreferenceDataStoreFactory.create(scope = scope, produceFile = { File(dir, "m.preferences_pb") }))
         cleanup = FakeCleanup()
         work = FakeWorkControl()
+        pendingStore = PendingLocalCleanupStore(PreferenceDataStoreFactory.create(scope = scope, produceFile = { File(dir, "p.preferences_pb") }))
+        retryEvents = mutableListOf()
+        pendingCleanup = PendingLocalCleanup(pendingStore, cleanup, { emptySet() }, { retryEvents += it })
         journal = AccountMergeJournal(File(dir, "journal.json"))
         thumbDir = File(dir, "thumbs").apply { mkdirs() }
         mergeIo = AccountMergeIo(firestore, ThumbnailStore(thumbDir, OkHttpClient(), AndroidImageCodec))
@@ -103,7 +109,7 @@ class AccountRepositoryTest {
     private fun newRepo(
         workControl: AccountWorkControl = work,
         hooks: AccountDeletionHooks = AccountDeletionHooks(),
-    ) = AccountRepositoryImpl(auth, firestore, store, cleanup, workControl, AuthSession(auth, scope), journal, mergeIo, hooks, scope)
+    ) = AccountRepositoryImpl(auth, firestore, store, cleanup, workControl, AuthSession(auth, scope), journal, mergeIo, hooks, pendingCleanup, scope)
 
     /** 운영과 같은 게이트·작업 제어(실제 WorkManager)로 만든 저장소. 게이트가 정말 풀리는지 확인할 때 쓴다. */
     private fun realGateRepo(gate: AccountOperationGate, hooks: AccountDeletionHooks = AccountDeletionHooks()): AccountRepositoryImpl {
@@ -187,8 +193,11 @@ class AccountRepositoryTest {
         assertEquals(DeleteResult.Success, result)
         listOf("places", "posts", "folders").forEach { assertEquals("$it 가 지워졌다", 0, serverCount(oldUid, it)) }
         assertTrue("사용자가 요청한 삭제라서 Room도 비운다", cleanup.roomCleared)
-        assertTrue(cleanup.deviceCachesCleared)
+        assertEquals("표시에 담긴 썸네일만 지운다", setOf("t1", "t2"), cleanup.thumbnailsClearedWith)
+        assertEquals("삭제한 계정의 동기화 기록만 지운다", oldUid, cleanup.placeSyncClearedFor)
+        assertFalse("로그아웃용 전체 정리(clearDeviceCaches)는 쓰지 않는다", cleanup.deviceCachesCleared)
         assertTrue(cleanup.cacheClearRequested)
+        assertNull("정리가 모두 성공했으니 표시가 지워졌다", pendingStore.read())
         assertTrue("영구 종료 플래그", store.read().closed)
         assertTrue("작업 일시정지 → 재개", work.paused && work.resumed)
         // 계정이 지워졌다: 같은 Google 토큰으로 다시 로그인하면 기존 계정이 아니라 새 사용자가 만들어진다
@@ -419,6 +428,52 @@ class AccountRepositoryTest {
         assertEquals("엉뚱한 계정에 쓰지 않았다", 1, serverCount(acctUid, "places"))
     }
 
+    // ── 로컬 정리 대기 표시 ──
+
+    @Test
+    fun 로컬_정리가_실패해도_삭제는_성공하고_표시가_남아_다음_시작에_이어서_정리된다() = runBlocking {
+        seedData(oldUid, places = 2)
+        cleanup.failRoom = true // 정리 도중 한 단계가 실패한다
+
+        val result = repo.deleteAccount(null)
+
+        assertEquals("서버 삭제가 확정됐으니 삭제는 성공으로 보고한다", DeleteResult.Success, result)
+        assertEquals(0, serverCount(oldUid, "places"))
+        assertFalse(cleanup.roomCleared)
+        val pending = pendingStore.read()!!
+        assertEquals("표시에 삭제한 계정과 썸네일 이름이 담겼다", oldUid, pending.uid)
+        assertEquals(setOf("t1", "t2"), pending.thumbnailKeys)
+
+        // 다음 앱 시작: 표시를 보고 이어서 정리 → 성공하면 표시가 지워진다
+        cleanup.failRoom = false
+        pendingCleanup.retryIfPending()
+
+        assertTrue(cleanup.roomCleared)
+        assertNull(pendingStore.read())
+        assertEquals(listOf(true), retryEvents)
+    }
+
+    @Test
+    fun 표시는_서버_삭제와_영구_종료_뒤_로컬_정리를_시작하기_전에_남는다() = runBlocking {
+        assertEquals(LinkResult.Success, repo.linkWithGoogle(fakeToken("marker-order")))
+        seedData(oldUid, places = 3)
+        var pendingAtStart: PendingCleanup? = null
+        var closedAtStart = false
+        var placesAtStart = -1
+        cleanup.atCleanupStart = {
+            pendingAtStart = pendingStore.read()
+            closedAtStart = store.read().closed
+            placesAtStart = serverCount(oldUid, "places")
+        }
+
+        assertEquals(DeleteResult.Success, repo.deleteAccount(fakeToken("marker-order")))
+
+        assertNotNull("정리를 시작할 때 표시가 이미 있다", pendingAtStart)
+        assertEquals(setOf("t1", "t2"), pendingAtStart!!.thumbnailKeys)
+        assertTrue("그 시점에 영구 종료 플래그가 켜져 있다", closedAtStart)
+        assertEquals("그 시점에 서버 삭제가 확정돼 있다", 0, placesAtStart)
+    }
+
     // ── 삭제 중 문서가 끼어드는 경우 ──
 
     /** 한 회차 삭제가 끝난 직후(재읽기 전) 새 문서를 쓰는 훅. [writes]가 true인 회차에만 쓴다. */
@@ -619,9 +674,24 @@ class AccountRepositoryTest {
         var deviceCachesCleared = false
         var roomCleared = false
         var cacheClearRequested = false
+        var thumbnailKeys: Set<String> = setOf("t1", "t2")
+        var thumbnailsClearedWith: Set<String>? = null
+        var placeSyncClearedFor: String? = null
+        var failRoom = false
+        /** 썸네일 정리가 시작되는 순간(= 로컬 정리의 첫 단계)에 불리는 훅. */
+        var atCleanupStart: (suspend () -> Unit)? = null
         var maintenanceScheduled = false
         override suspend fun clearDeviceCaches() { deviceCachesCleared = true }
-        override suspend fun clearLegacyRoom() { roomCleared = true }
+        override suspend fun listThumbnailKeys(): Set<String> = thumbnailKeys
+        override suspend fun clearThumbnails(keys: Set<String>, olderThanMillis: Long, protectedKeys: Set<String>) {
+            atCleanupStart?.invoke()
+            thumbnailsClearedWith = keys - protectedKeys
+        }
+        override suspend fun clearPlaceSyncFor(uid: String) { placeSyncClearedFor = uid }
+        override suspend fun clearLegacyRoom() {
+            if (failRoom) throw IllegalStateException("Room 비우기 실패")
+            roomCleared = true
+        }
         override fun requestFirestoreCacheClear() { cacheClearRequested = true }
         override fun scheduleThumbnailMaintenance() { maintenanceScheduled = true }
     }

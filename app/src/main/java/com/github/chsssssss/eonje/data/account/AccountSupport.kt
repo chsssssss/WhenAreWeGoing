@@ -58,8 +58,20 @@ class WorkManagerAccountWorkControl @Inject constructor(
 
 /** 로그아웃·삭제 뒤 이 기기에서 정리할 것들. 테스트에선 가짜로 바꾼다. */
 interface AccountLocalCleanup {
-    /** 내려받아 둔 썸네일 파일과 장소 동기화 기록(uid 기준 캐시 판단용)을 지운다. */
+    /** 로그아웃용: 내려받아 둔 썸네일 파일 전부와 장소 동기화 기록(uid 기준 캐시 판단용)을 지운다. */
     suspend fun clearDeviceCaches()
+
+    /** 지금 기기에 있는 썸네일 파일의 postId 목록(계정 삭제 뒤 정리 대기 표시에 담는다). */
+    suspend fun listThumbnailKeys(): Set<String>
+
+    /**
+     * [keys]의 썸네일만 지운다. [olderThanMillis] 이후에 바뀐 파일(새 계정이 같은 게시물을 다시 저장해 새로 받은 것)과 [protectedKeys](지금 계정이
+     * 아는 게시물)는 지우지 않는다. 멱등 — 이미 없어도 안전하다.
+     */
+    suspend fun clearThumbnails(keys: Set<String>, olderThanMillis: Long, protectedKeys: Set<String>)
+
+    /** [uid]의 장소 동기화 기록만 지운다(다른 uid의 기록은 건드리지 않는다). 멱등. */
+    suspend fun clearPlaceSyncFor(uid: String)
 
     /** Room 테이블의 데이터를 비운다(스키마는 그대로). **사용자가 직접 요청한 삭제에서만** 쓴다. */
     suspend fun clearLegacyRoom()
@@ -83,6 +95,14 @@ class AccountLocalCleanupImpl @Inject constructor(
         thumbnailStore.clearAll()
         placeSyncStore.clear()
     }
+
+    override suspend fun listThumbnailKeys(): Set<String> = withContext(Dispatchers.IO) { thumbnailStore.listKeys() }
+
+    override suspend fun clearThumbnails(keys: Set<String>, olderThanMillis: Long, protectedKeys: Set<String>) {
+        withContext(Dispatchers.IO) { thumbnailStore.deleteKeysNotModifiedSince(keys - protectedKeys, olderThanMillis) }
+    }
+
+    override suspend fun clearPlaceSyncFor(uid: String) = withContext(Dispatchers.IO) { placeSyncStore.clear(uid) }
 
     override suspend fun clearLegacyRoom() = withContext(Dispatchers.IO) { database.clearAllTables() }
 

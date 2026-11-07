@@ -74,6 +74,9 @@ object Events {
     /** 계정(또는 익명 데이터) 삭제를 끝냄. */
     const val ACCOUNT_DELETED = "account_deleted"
 
+    /** 앱 시작 때 계정 삭제 뒤 끝나지 않은 로컬 정리를 다시 시도함. [Param.STATUS] = [Status]의 success·error. 값은 넣지 않는다. */
+    const val ACCOUNT_LOCAL_CLEANUP_RETRY = "account_local_cleanup_retry"
+
     /** 계정 삭제가 중간에 멈춤. [Param.STEP] = 멈춘 단계(reauth·data·account). */
     const val ACCOUNT_DELETE_FAILED = "account_delete_failed"
 

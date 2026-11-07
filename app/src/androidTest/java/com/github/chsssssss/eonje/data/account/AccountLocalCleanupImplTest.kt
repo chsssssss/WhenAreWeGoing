@@ -99,6 +99,43 @@ class AccountLocalCleanupImplTest {
     }
 
     @Test
+    fun listThumbnailKeys는_jpg_썸네일의_게시물_ID만_돌려준다() = runBlocking {
+        File(thumbDir, "post-1.jpg").writeBytes(ByteArray(10) { 1 })
+        File(thumbDir, "post-2.jpg").writeBytes(ByteArray(10) { 1 })
+        File(thumbDir, "post-3.jpg.tmp").writeBytes(ByteArray(10) { 1 })
+
+        assertEquals(setOf("post-1", "post-2"), cleanup.listThumbnailKeys())
+    }
+
+    @Test
+    fun clearThumbnails는_목록의_파일만_지우고_이후에_바뀐_파일과_보호_대상은_남기며_멱등이다() = runBlocking {
+        val cutoff = 1_000_000L
+        File(thumbDir, "old.jpg").apply { writeBytes(ByteArray(10) { 1 }); setLastModified(cutoff - 1) }
+        File(thumbDir, "old-same-time.jpg").apply { writeBytes(ByteArray(10) { 1 }); setLastModified(cutoff) }
+        File(thumbDir, "rewritten.jpg").apply { writeBytes(ByteArray(10) { 1 }); setLastModified(cutoff + 1) } // 새 계정이 같은 게시물을 다시 저장해 받은 파일
+        File(thumbDir, "protected.jpg").apply { writeBytes(ByteArray(10) { 1 }); setLastModified(cutoff - 1) } // 지금 계정이 아는 게시물
+        File(thumbDir, "not-listed.jpg").apply { writeBytes(ByteArray(10) { 1 }); setLastModified(cutoff - 1) } // 표시에 없는 파일
+
+        val keys = setOf("old", "old-same-time", "rewritten", "protected", "already-gone")
+        cleanup.clearThumbnails(keys, cutoff, protectedKeys = setOf("protected"))
+        cleanup.clearThumbnails(keys, cutoff, protectedKeys = setOf("protected")) // 한 번 더 — 이미 지워진 상태에서도 안전
+
+        assertEquals(setOf("rewritten.jpg", "protected.jpg", "not-listed.jpg"), thumbDir.list()!!.toSet())
+    }
+
+    @Test
+    fun clearPlaceSyncFor는_그_uid의_기록만_지운다() = runBlocking {
+        placeSync.markFullSync("old-uid", 1L)
+        placeSync.markFullSync("new-uid", 2L)
+
+        cleanup.clearPlaceSyncFor("old-uid")
+        cleanup.clearPlaceSyncFor("old-uid") // 멱등
+
+        assertNull(placeSync.lastFullSyncMillis("old-uid"))
+        assertEquals(2L, placeSync.lastFullSyncMillis("new-uid"))
+    }
+
+    @Test
     fun requestFirestoreCacheClear는_다음_시작이_읽을_수_있게_플래그를_남긴다() {
         assertFalse(FirestoreCacheClearFlag.isRequested(context))
 

@@ -6,6 +6,8 @@ import com.github.chsssssss.eonje.data.firestore.FirestoreFolderRepository
 import com.github.chsssssss.eonje.data.firestore.FirestorePlaceRepository
 import com.github.chsssssss.eonje.data.firestore.FirestoreSavedPostRepository
 import com.github.chsssssss.eonje.data.account.AccountLocalCleanup
+import com.github.chsssssss.eonje.data.account.CleanupRetryEvents
+import com.github.chsssssss.eonje.data.account.FirebaseCleanupRetryEvents
 import com.github.chsssssss.eonje.data.account.merge.AccountMergeJournal
 import com.github.chsssssss.eonje.data.local.MergeInProgress
 import com.github.chsssssss.eonje.data.account.AccountLocalCleanupImpl
@@ -87,6 +89,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMergeInProgress(impl: AccountMergeJournal): MergeInProgress
+
+    @Binds
+    @Singleton
+    abstract fun bindCleanupRetryEvents(impl: FirebaseCleanupRetryEvents): CleanupRetryEvents
 
     @Binds
     @Singleton

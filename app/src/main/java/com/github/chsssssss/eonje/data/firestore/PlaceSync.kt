@@ -53,8 +53,11 @@ interface PlaceSyncStore {
     fun lastFullSyncMillis(uid: String): Long?
     fun markFullSync(uid: String, millis: Long)
 
-    /** 기록을 모두 지운다(로그아웃·계정 삭제 뒤). */
+    /** 기록을 모두 지운다(로그아웃 뒤). */
     fun clear()
+
+    /** [uid]의 기록만 지운다(계정 삭제 뒤 정리 — 새 계정의 기록은 건드리지 않는다). */
+    fun clear(uid: String)
 }
 
 class InMemoryPlaceSyncStore : PlaceSyncStore {
@@ -62,6 +65,7 @@ class InMemoryPlaceSyncStore : PlaceSyncStore {
     override fun lastFullSyncMillis(uid: String): Long? = map[uid]
     override fun markFullSync(uid: String, millis: Long) { map[uid] = millis }
     override fun clear() = map.clear()
+    override fun clear(uid: String) { map.remove(uid) }
 }
 
 @Singleton
@@ -77,6 +81,10 @@ class SharedPrefsPlaceSyncStore @Inject constructor(@ApplicationContext context:
 
     override fun clear() {
         prefs.edit().clear().apply()
+    }
+
+    override fun clear(uid: String) {
+        if (prefs.getString(KEY_UID, null) == uid) prefs.edit().clear().apply()
     }
 
     companion object {
