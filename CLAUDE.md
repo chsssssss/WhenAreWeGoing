@@ -490,6 +490,7 @@ enum class UnresolvedReason {
 - 모든 네트워크/DB 작업은 코루틴. UI 레이어에서 직접 호출 금지
 - **Firestore**: named 앱 `wherewegoing`에만 붙인다(위 "비용·서버 구조"). 쓰기 Task는 await하지 않는다(오프라인에서 멈춘다) — 화면은 리스너로 갱신된다. 백그라운드 Worker·위젯은 `Source.CACHE`로만 읽고, 마이그레이션처럼 서버 확정이 필요한 Worker만 await한다. 문서 필드는 `FirestoreMappers`에서만 정한다. 에러·로그엔 작업 이름과 오류 종류만 남기고 문서 경로·내용은 남기지 않는다
 - **빌드 검증은 종료 코드로 한다** — `grep`으로 걸러 보면 컴파일 에러를 놓친다(실제로 놓쳐서 깨진 상태로 커밋한 적이 있다). `assembleDebug`, `assembleRelease`, `testDebugUnitTest`, `compileDebugAndroidTestKotlin`, 에뮬레이터를 띄운 `connectedDebugAndroidTest`를 단계마다 돌린다
+- **계측 테스트는 반드시 `ANDROID_SERIAL`로 에뮬레이터를 지정해서 실행한다** — 실기기가 연결돼 있을 수 있으니 `connectedDebugAndroidTest` 등 계측 테스트는 `ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest ...`처럼 기기를 지정한다. 실기기에는 사용자 데이터가 있어 앱이 제거되면 안 된다(지정하지 않으면 연결된 모든 기기에서 실행되고, 끝나면 앱이 제거된다).
 - **Room 스키마(레거시, v9)는 이번 버전에서 바꾸지 않는다. 바꿔야 한다면 반드시 마이그레이션 추가** — 1.0 출시 기준 스키마는 v9(`app/schemas/.../9.json`, git 관리). 파괴적 마이그레이션(`fallbackToDestructiveMigration`)은 제거했으므로, `version`을 올리고 `Migration`/`AutoMigration`을 빠뜨리면 앱 시작 시 크래시로 드러난다(데이터를 조용히 지우지 않게 하려는 의도)
 - **릴리스 로그에 URL·캡션·가게 이름을 남기지 않는다** — OkHttp `HttpLoggingInterceptor`는 `BuildConfig.DEBUG`일 때만 붙인다(BASIC도 요청 URL 전체, 즉 카카오 검색어를 남김)
 - **광고 ID 권한은 매니페스트에서 제거해둔 상태** — Firebase Analytics가 `AD_ID`/`ACCESS_ADSERVICES_*` 권한을 자동 추가하므로 `tools:node="remove"`로 빼고 `google_analytics_adid_collection_enabled=false`로 수집도 끈다. Play Console 광고 ID 신고는 "사용 안 함"과 일치해야 한다
