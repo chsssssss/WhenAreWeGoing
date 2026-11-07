@@ -19,10 +19,10 @@ interface PlaceRepository {
     suspend fun loadCachedAll(): List<Place>
 
     /**
-     * 장소 id → 그 장소가 나온 게시물(최신순). 홈 화면이 카드 썸네일·상세의 게시물 목록을 그릴 때 쓴다.
-     * 장소마다 따로 조회하지 않고 한 번에 묶어서 낸다.
+     * 한 장소가 나온 게시물(최신순). 홈 상세 모드가 열려 있는 동안에만 구독한다 — 목록 화면은 [Place.postIds]·[Place.thumbnailUrl]만 쓰고
+     * 게시물 문서는 읽지 않는다(Firestore는 읽은 문서 수만큼 과금).
      */
-    fun observePostsByPlace(): Flow<Map<String, List<SavedPost>>>
+    fun observePostsForPlace(placeId: String): Flow<List<SavedPost>>
 
     /** folderId가 null이면 미분류로 되돌린다. */
     suspend fun assignFolder(placeId: String, folderId: String?)

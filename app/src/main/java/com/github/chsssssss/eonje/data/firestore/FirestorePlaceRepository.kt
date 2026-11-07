@@ -3,7 +3,6 @@ package com.github.chsssssss.eonje.data.firestore
 import com.github.chsssssss.eonje.data.local.ThumbnailStore
 import com.github.chsssssss.eonje.di.ApplicationScope
 import com.github.chsssssss.eonje.domain.model.Place
-import com.github.chsssssss.eonje.domain.model.ResolveStatus
 import com.github.chsssssss.eonje.domain.model.SavedPost
 import com.github.chsssssss.eonje.domain.repository.NotSignedInException
 import com.github.chsssssss.eonje.domain.repository.PlaceRepository
@@ -47,41 +46,33 @@ class FirestorePlaceRepository @Inject constructor(
                 flowOf(emptyList())
             } else {
                 firestore.places(uid).orderBy(Fields.CREATED_AT, Query.Direction.DESCENDING).snapshots()
-                    .map { snapshot -> snapshot.documents.map { it.toPlace() } }
+                    .map { snapshot -> snapshot.documents.map { it.toPlace(thumbnailStore::existingUrl) } }
             }
         }
         .catch { logListenerError("장소", it); emit(emptyList()) }
         .shareIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), replay = 1)
 
-    // 확정된(RESOLVED) 게시물 한 묶음을 듣고 메모리에서 장소별로 나눈다 — 장소마다 질의하면 읽기 비용이 장소 수만큼 든다.
-    // 장소에 연결된 게시물은 항상 RESOLVED다(확정할 때 연결하고 상태를 바꾼다).
-    private val postsByPlace: Flow<Map<String, List<SavedPost>>> = auth.uid
-        .flatMapLatest { uid ->
-            if (uid == null) {
-                flowOf(emptyMap())
-            } else {
-                firestore.posts(uid).whereEqualTo(Fields.STATUS, ResolveStatus.RESOLVED.name).snapshots().map { snapshot ->
-                    val grouped = HashMap<String, MutableList<SavedPost>>()
-                    snapshot.documents.forEach { doc ->
-                        val post = doc.toSavedPost(thumbnailStore::existingUrl) ?: return@forEach
-                        doc.placeIds().forEach { placeId -> grouped.getOrPut(placeId) { mutableListOf() } += post }
-                    }
-                    grouped.mapValues { (_, posts) -> posts.sortedByDescending { it.createdAt } }
-                }
-            }
-        }
-        .catch { logListenerError("장소별 게시물", it); emit(emptyMap()) }
-        .shareIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), replay = 1)
-
     override fun observeAll(): Flow<List<Place>> = allPlaces
 
-    override fun observePostsByPlace(): Flow<Map<String, List<SavedPost>>> = postsByPlace
+    // 장소 하나의 게시물만 듣는다(상세 모드가 열려 있는 동안). 장소 전체의 게시물을 듣지 않는다 — 읽기 수가 라이브러리 크기에 비례해버린다.
+    override fun observePostsForPlace(placeId: String): Flow<List<SavedPost>> = auth.uid
+        .flatMapLatest { uid ->
+            if (uid == null) {
+                flowOf(emptyList())
+            } else {
+                firestore.posts(uid).whereArrayContains(Fields.PLACE_IDS, placeId).snapshots()
+                    .map { snapshot ->
+                        snapshot.documents.mapNotNull { it.toSavedPost(thumbnailStore::existingUrl) }.sortedByDescending { it.createdAt }
+                    }
+            }
+        }
+        .catch { logListenerError("장소의 게시물", it); emit(emptyList()) }
 
     override suspend fun loadCachedAll(): List<Place> {
         val uid = auth.currentUid() ?: return emptyList()
         return try {
             firestore.places(uid).orderBy(Fields.CREATED_AT, Query.Direction.DESCENDING).get(Source.CACHE).await()
-                .documents.map { it.toPlace() }
+                .documents.map { it.toPlace(thumbnailStore::existingUrl) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -111,8 +102,15 @@ class FirestorePlaceRepository @Inject constructor(
 
     override suspend fun linkPostToPlace(postId: String, placeId: String) {
         val uid = requireUid()
-        firestore.posts(uid).document(postId).update(Fields.PLACE_IDS, FieldValue.arrayUnion(placeId))
-            .logFailure("게시물-장소 연결")
+        // 게시물의 placeIds와 장소의 postIds(역방향)를 한 배치로 쓴다 — 홈이 게시물 문서를 안 읽고도 개수·썸네일을 알려면 둘이 같이 가야 한다.
+        firestore.commitInChunks(
+            "게시물-장소 연결",
+            listOf(
+                { batch -> batch.update(firestore.posts(uid).document(postId), Fields.PLACE_IDS, FieldValue.arrayUnion(placeId)) },
+                { batch -> batch.update(firestore.places(uid).document(placeId), Fields.POST_IDS, FieldValue.arrayUnion(postId)) },
+            ),
+        )
+        placesChangedNotifier.notifyPlacesChanged()
     }
 
     override suspend fun postIdsForPlace(placeId: String): List<String> {

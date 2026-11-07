@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -35,7 +37,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-@OptIn(kotlinx.coroutines.FlowPreview::class)
+@OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
@@ -140,13 +142,18 @@ class HomeViewModel @Inject constructor(
             ViewState(selectedId, location, pickerFor, showCreateFolder, folderAssign)
         }
 
-    // 저장소에서 오는 세 가지(장소, 폴더, 장소별 게시물)를 한 묶음으로 받는다. 화면 상태가 바뀔 때마다 장소별로 게시물을
-    // 다시 조회하지 않고, 저장소가 한 번에 묶어 준 값을 메모리에서 쓴다(Firestore에선 조회마다 읽기 비용이 든다).
+    // 선택한 장소(상세 모드)의 게시물만 듣는다. 목록은 장소 문서의 postIds·thumbnailUrl로 그리고 게시물 문서는 읽지 않는다
+    // (Firestore는 읽은 문서 수만큼 과금). 상세를 닫으면(selectedPlaceId == null) 리스너가 해제된다.
+    private val selectedPlacePosts: Flow<List<SavedPost>> = selectedPlaceId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else placeRepository.observePostsForPlace(id)
+    }
+
+    // 저장소에서 오는 세 가지(장소, 폴더, 선택한 장소의 게시물)를 한 묶음으로 받는다.
     private val storedData: Flow<StoredData> = combine(
         placeRepository.observeAll(),
         folderRepository.observeAll(),
-        placeRepository.observePostsByPlace(),
-    ) { places, folders, postsByPlace -> StoredData(places, folders, postsByPlace) }
+        selectedPlacePosts,
+    ) { places, folders, selectedPosts -> StoredData(places, folders, selectedPosts) }
 
     val uiState: StateFlow<HomeUiState> = combine(
         storedData,
@@ -154,7 +161,7 @@ class HomeViewModel @Inject constructor(
         folderFilter,
         viewState,
         migrationUi,
-    ) { (places, folders, postsByPlace), query, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign), migration ->
+    ) { (places, folders, selectedPosts), query, filter, (selectedPlaceId, currentLocation, folderPickerForPlaceId, showCreateFolder, folderAssign), migration ->
         val folderFiltered = when (filter) {
             FolderFilter.All -> places
             FolderFilter.Unclassified -> places.filter { it.folderId == null }
@@ -171,21 +178,15 @@ class HomeViewModel @Inject constructor(
             }
         }
         val foldersById = folders.associateBy { it.id }
-        val placesWithPosts = visiblePlaces.map { place -> place to postsByPlace[place.id].orEmpty() }
-        val selectedPosts = placesWithPosts
-            .firstOrNull { (place, _) -> place.id == selectedPlaceId }
-            ?.second.orEmpty()
-            .map { it.toHomePlacePost() }
+        val selectedHomePosts = if (selectedPlaceId == null) emptyList() else selectedPosts.map { it.toHomePlacePost() }
 
         HomeUiState(
-            places = placesWithPosts.map { (place, posts) ->
-                place.toHomePlace(posts.firstNotNullOfOrNull { it.thumbnailUrl }, foldersById[place.folderId])
-            },
+            places = visiblePlaces.map { place -> place.toHomePlace(place.thumbnailUrl, foldersById[place.folderId]) },
             folders = folders,
             folderFilter = filter,
             searchQuery = query,
             selectedPlaceId = selectedPlaceId,
-            selectedPlacePosts = selectedPosts,
+            selectedPlacePosts = selectedHomePosts,
             currentLocation = currentLocation,
             folderPickerForPlaceId = folderPickerForPlaceId,
             showCreateFolderSheet = showCreateFolder,
@@ -374,7 +375,7 @@ private data class MigrationUi(val phase: LegacyMigrationPhase, val banner: Migr
 private data class StoredData(
     val places: List<Place>,
     val folders: List<Folder>,
-    val postsByPlace: Map<String, List<SavedPost>>,
+    val selectedPlacePosts: List<SavedPost>,
 )
 
 private data class FolderAssignState(

@@ -22,4 +22,8 @@ interface PostPlaceCrossRefDao {
     // 이전용: 게시물 묶음의 연결을 한 번에 읽는다.
     @Query("SELECT * FROM PostPlaceCrossRef WHERE postId IN (:postIds)")
     suspend fun forPosts(postIds: List<String>): List<PostPlaceCrossRef>
+
+    // 이전용: 장소 묶음의 연결을 한 번에 읽는다(장소 문서의 postIds를 채운다).
+    @Query("SELECT * FROM PostPlaceCrossRef WHERE placeId IN (:placeIds)")
+    suspend fun forPlaces(placeIds: List<String>): List<PostPlaceCrossRef>
 }

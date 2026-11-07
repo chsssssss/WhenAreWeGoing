@@ -191,6 +191,8 @@ class RoomPlaceRepositoryTest {
         }
 
         override suspend fun forPosts(postIds: List<String>): List<PostPlaceCrossRef> = refs.filter { it.postId in postIds }
+
+        override suspend fun forPlaces(placeIds: List<String>): List<PostPlaceCrossRef> = refs.filter { it.placeId in placeIds }
     }
 
     /** 이 테스트들이 확인하는 동작에는 게시물 저장소가 관여하지 않는다 — 호출되면 바로 드러나게 둔다. */

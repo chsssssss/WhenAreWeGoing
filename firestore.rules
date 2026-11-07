@@ -71,9 +71,10 @@ service cloud.firestore {
     }
 
     // places: name, address, latitude, longitude, kakaoPlaceId, category, status, createdAt, resolvedAt, folderId (Place.toFields)
+    //         + postIds[] (이 장소가 나온 게시물 id — 게시물 placeIds의 역방향. 비어 있으면 필드가 없을 수 있다)
     function validPlace(d) {
       return d.keys().hasOnly(['name', 'address', 'latitude', 'longitude', 'kakaoPlaceId', 'category',
-                               'status', 'createdAt', 'resolvedAt', 'folderId'])
+                               'status', 'createdAt', 'resolvedAt', 'folderId', 'postIds'])
         && d.keys().hasAll(['status', 'createdAt'])
         && optStr(d, 'name', 200)
         && optStr(d, 'address', 300)
@@ -84,7 +85,8 @@ service cloud.firestore {
         && optNum(d, 'longitude', -180, 180)
         && validStatus(d.status)
         && d.createdAt is number
-        && optTime(d, 'resolvedAt');
+        && optTime(d, 'resolvedAt')
+        && (!('postIds' in d) || (d.postIds is list && d.postIds.size() <= 200));
     }
 
     // posts: instagramUrl, shortcode, caption, status, extractedCount, createdAt, unresolvedReason (SavedPost.toFields)

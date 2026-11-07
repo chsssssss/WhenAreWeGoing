@@ -37,6 +37,7 @@ internal object Fields {
     const val CATEGORY = "category"
     const val RESOLVED_AT = "resolvedAt"
     const val FOLDER_ID = "folderId"
+    const val POST_IDS = "postIds"
 
     // folders
     const val COLOR = "color"
@@ -109,9 +110,18 @@ internal fun Place.toFields(): Map<String, Any?> = mapOf(
     Fields.CREATED_AT to createdAt,
     Fields.RESOLVED_AT to resolvedAt,
     Fields.FOLDER_ID to folderId,
+) + listOfNotNull(
+    // 비어 있는 배열은 필드를 만들지 않는다(게시물의 placeIds와 같은 규칙).
+    postIds.takeIf { it.isNotEmpty() }?.let { Fields.POST_IDS to it },
 )
 
-internal fun DocumentSnapshot.toPlace(): Place = Place(
+/** [localThumbnailUrl]은 postIds 순서대로 이 기기에 파일이 있는 첫 게시물의 file:// 경로를 준다(없으면 null). */
+internal fun DocumentSnapshot.toPlace(localThumbnailUrl: (String) -> String? = { null }): Place {
+    val postIds = (get(Fields.POST_IDS) as? List<*>)?.filterIsInstance<String>().orEmpty()
+    return toPlaceBase(postIds, postIds.firstNotNullOfOrNull(localThumbnailUrl))
+}
+
+private fun DocumentSnapshot.toPlaceBase(postIds: List<String>, thumbnailUrl: String?): Place = Place(
     id = id,
     name = getString(Fields.NAME),
     address = getString(Fields.ADDRESS),
@@ -123,6 +133,8 @@ internal fun DocumentSnapshot.toPlace(): Place = Place(
     createdAt = getLong(Fields.CREATED_AT) ?: 0L,
     resolvedAt = getLong(Fields.RESOLVED_AT),
     folderId = getString(Fields.FOLDER_ID),
+    postIds = postIds,
+    thumbnailUrl = thumbnailUrl,
 )
 
 // ── Folder ──

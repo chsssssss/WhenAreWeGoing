@@ -198,24 +198,43 @@ class FirestoreRepositoriesTest {
     }
 
     @Test
-    fun 장소별_게시물은_RESOLVED만_장소마다_묶고_썸네일은_이_기기의_파일로_채운다() = runBlocking {
+    fun 장소는_postIds로_개수와_썸네일을_알고_게시물은_장소별로_듣는다() = runBlocking {
         File(dir, "post-1.jpg").writeBytes(ByteArray(10) { 1 }) // 이 기기에 받아둔 썸네일
         posts.save(post("post-1", status = ResolveStatus.RESOLVED, createdAt = 2_000))
         posts.save(post("post-2", status = ResolveStatus.RESOLVED, createdAt = 1_000))
-        posts.save(post("post-3", status = ResolveStatus.NEEDS_REVIEW, createdAt = 3_000))
         places.save(place("A"))
         places.save(place("B"))
         places.linkPostToPlace("post-1", "A")
         places.linkPostToPlace("post-2", "A")
         places.linkPostToPlace("post-2", "B")
-        places.linkPostToPlace("post-3", "B") // 미확정 게시물은 묶음에 들어오지 않는다
 
-        val byPlace = withTimeout(TIMEOUT) { places.observePostsByPlace().first { it["A"]?.size == 2 && it["B"]?.size == 1 } }
+        // 목록: 게시물 문서를 읽지 않고 장소 문서의 postIds·썸네일만으로 안다
+        val all = awaitPlaces { list -> list.firstOrNull { it.id == "A" }?.postIds?.size == 2 && list.firstOrNull { it.id == "B" }?.postIds?.size == 1 }
+        val a = all.first { it.id == "A" }
+        assertEquals(setOf("post-1", "post-2"), a.postIds.toSet())
+        assertEquals("file://${File(dir, "post-1.jpg").absolutePath}", a.thumbnailUrl)
+        assertNull("파일이 있는 게시물이 없으면 썸네일은 null", all.first { it.id == "B" }.thumbnailUrl)
 
-        assertEquals(listOf("post-1", "post-2"), byPlace.getValue("A").map { it.id }) // 최신순
-        assertEquals(listOf("post-2"), byPlace.getValue("B").map { it.id })
-        assertEquals("file://${File(dir, "post-1.jpg").absolutePath}", byPlace.getValue("A").first().thumbnailUrl)
-        assertNull("파일이 없으면 썸네일은 null", byPlace.getValue("A").last().thumbnailUrl)
+        // 상세: 그 장소의 게시물만, 최신순
+        val forA = withTimeout(TIMEOUT) { places.observePostsForPlace("A").first { it.size == 2 } }
+        assertEquals(listOf("post-1", "post-2"), forA.map { it.id })
+        val forB = withTimeout(TIMEOUT) { places.observePostsForPlace("B").first { it.size == 1 } }
+        assertEquals(listOf("post-2"), forB.map { it.id })
+    }
+
+    @Test
+    fun 게시물을_지우면_장소의_postIds에서도_빠진다() = runBlocking {
+        posts.save(post("post-1", status = ResolveStatus.RESOLVED))
+        posts.save(post("post-2", status = ResolveStatus.RESOLVED))
+        places.save(place("A"))
+        places.linkPostToPlace("post-1", "A")
+        places.linkPostToPlace("post-2", "A")
+        awaitPlaces { list -> list.firstOrNull { it.id == "A" }?.postIds?.size == 2 }
+
+        posts.deleteByIds(listOf("post-1"))
+
+        val after = awaitPlaces { list -> list.firstOrNull { it.id == "A" }?.postIds == listOf("post-2") }
+        assertEquals(listOf("post-2"), after.first { it.id == "A" }.postIds)
     }
 
     // ── 게시물 ──

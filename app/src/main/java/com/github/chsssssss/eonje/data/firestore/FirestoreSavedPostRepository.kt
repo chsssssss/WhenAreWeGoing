@@ -8,6 +8,7 @@ import com.github.chsssssss.eonje.domain.model.UnresolvedReason
 import com.github.chsssssss.eonje.domain.repository.NotSignedInException
 import com.github.chsssssss.eonje.domain.repository.SavedPostRepository
 import com.google.firebase.firestore.FieldPath
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
@@ -134,7 +135,21 @@ class FirestoreSavedPostRepository @Inject constructor(
     override suspend fun deleteByIds(ids: List<String>) {
         if (ids.isEmpty()) return
         val uid = requireUid()
+        // 이 게시물을 가리키는 장소의 postIds도 정리해야 한다. 삭제 전에 캐시에서 게시물의 placeIds를 읽어 둔다(서버를 읽지 않는다).
+        val placeToPostIds = HashMap<String, MutableList<String>>()
+        ids.distinct().chunked(WHERE_IN_LIMIT).forEach { chunk ->
+            readFromCache(firestore.posts(uid).whereIn(FieldPath.documentId(), chunk))?.documents?.forEach { doc ->
+                doc.placeIds().forEach { placeId -> placeToPostIds.getOrPut(placeId) { mutableListOf() } += doc.id }
+            }
+        }
         firestore.commitInChunks("게시물 삭제", ids.map { id -> { batch -> batch.delete(firestore.posts(uid).document(id)) } })
+        // 장소 쪽 정리는 게시물 삭제와 별도 배치로 보낸다 — 장소 문서가 이미 없으면 update가 실패하는데, 그게 게시물 삭제까지 막으면 안 된다.
+        firestore.commitInChunks(
+            "장소의 게시물 연결 정리",
+            placeToPostIds.map { (placeId, postIds) ->
+                { batch -> batch.update(firestore.places(uid).document(placeId), Fields.POST_IDS, FieldValue.arrayRemove(*postIds.toTypedArray())) }
+            },
+        )
         // 기기에 받아둔 썸네일 파일도 같이 지운다(기존 동작 그대로).
         thumbnailStore.deleteAll(ids)
     }

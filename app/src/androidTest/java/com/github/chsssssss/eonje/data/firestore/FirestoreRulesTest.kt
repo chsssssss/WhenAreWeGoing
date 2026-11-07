@@ -236,9 +236,12 @@ class FirestoreRulesTest {
         assertDenied("placeIds 201개") { post("a", goodPost + ("placeIds" to (1..201).map { "p$it" })) }
         assertDenied("candidates 501개") { post("a", goodPost + ("candidates" to (1..501).map { candidate("a", it, 0).toMap() })) }
         assertDenied("placeIds가 배열이 아님") { post("a", goodPost + ("placeIds" to "place-1")) }
+        assertDenied("장소 postIds 201개") { place("a", place().toFields() + ("postIds" to (1..201).map { "p$it" })) }
+        assertDenied("장소 postIds가 배열이 아님") { place("a", place().toFields() + ("postIds" to "post-1")) }
         // 경계값은 통과: 캡션 20000자, placeIds 200개, 장소 이름 200자
         post("edge", goodPost + ("caption" to "가".repeat(20_000)) + ("placeIds" to (1..200).map { "p$it" }))
         place("edge", place().toFields() + ("name" to "가".repeat(200)))
+        place("edge-post-ids", place().copy(postIds = (1..200).map { "p$it" }).toFields())
     }
 
     @Test

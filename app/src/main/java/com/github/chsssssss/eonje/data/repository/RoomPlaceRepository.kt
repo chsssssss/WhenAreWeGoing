@@ -49,12 +49,10 @@ class RoomPlaceRepository @Inject constructor(
 
     override suspend fun loadCachedAll(): List<Place> = placeDao.observeAll().first().map { it.toDomain() }
 
-    // Room 구현은 이관(읽기)용이라 효율보다 단순함을 택했다 — 장소마다 연결된 게시물을 읽어 묶는다.
-    override fun observePostsByPlace(): Flow<Map<String, List<SavedPost>>> =
-        placeDao.observeAll().map { places ->
-            places.associate { place ->
-                place.id to savedPostDao.findByIds(crossRefDao.postIdsForPlace(place.id)).map { it.toDomain() }
-            }
+    // Room 구현은 이관(읽기)용이라 효율보다 단순함을 택했다.
+    override fun observePostsForPlace(placeId: String): Flow<List<SavedPost>> =
+        placeDao.observeAll().map {
+            savedPostDao.findByIds(crossRefDao.postIdsForPlace(placeId)).map { post -> post.toDomain() }.sortedByDescending { post -> post.createdAt }
         }
 
     override suspend fun assignFolder(placeId: String, folderId: String?) {

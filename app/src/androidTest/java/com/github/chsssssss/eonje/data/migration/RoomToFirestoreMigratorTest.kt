@@ -132,8 +132,14 @@ class RoomToFirestoreMigratorTest {
         val placeRepo = FirestorePlaceRepository(firestore, session, thumbs, PlacesChangedNotifier { }, scope)
         val postRepo = FirestoreSavedPostRepository(firestore, session, thumbs, scope)
         val candRepo = FirestoreExtractedCandidateRepository(firestore, session)
-        val roomPlaces = db.placeDao().pageAfter("", 100).map { it.toDomain() }.associateBy { it.id }
-        assertEquals(roomPlaces, placeRepo.observeAll().first { it.size == 5 }.associateBy { it.id })
+        // 장소 문서의 postIds는 Room의 연결(crossref)에서 채워진다 — Room 도메인 값엔 없으니 같은 연결로 채워서 비교한다.
+        val refsByPlace = db.postPlaceCrossRefDao().forPlaces((1..5).map { "place-$it" }).groupBy({ it.placeId }, { it.postId })
+        val roomPlaces = db.placeDao().pageAfter("", 100).map { it.toDomain() }
+            .map { it.copy(postIds = refsByPlace[it.id].orEmpty().sorted()) }.associateBy { it.id }
+        assertEquals(listOf("post-1"), roomPlaces.getValue("place-1").postIds)
+        assertEquals(listOf("post-2"), roomPlaces.getValue("place-3").postIds)
+        assertEquals(roomPlaces, placeRepo.observeAll().first { it.size == 5 }.associateBy { it.id }
+            .mapValues { it.value.copy(postIds = it.value.postIds.sorted()) })
         val roomPosts = db.savedPostDao().pageAfter("", 100).map { it.toDomain().copy(thumbnailUrl = null) }
         assertEquals(roomPosts.sortedBy { it.id }, postRepo.findByIds((1..5).map { "post-$it" }).sortedBy { it.id })
         assertEquals(
@@ -480,7 +486,7 @@ class RoomToFirestoreMigratorTest {
         val postRepo = FirestoreSavedPostRepository(firestore, session, thumbs, scope)
         val placeRepo = FirestorePlaceRepository(firestore, session, thumbs, PlacesChangedNotifier { }, scope)
         assertTrue("인박스·배지(미확정)에 없다", postRepo.observeUnresolved().first().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
-        assertTrue("홈·지도·위젯의 장소별 게시물에 없다", placeRepo.observePostsByPlace().first().values.flatten().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
+        assertTrue("홈·지도·위젯의 장소별 게시물에 없다", placeRepo.observePostsForPlace("any-place").first().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
         assertTrue("장소로는 더더욱 없다", placeRepo.observeAll().first().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
         assertTrue("위젯이 읽는 캐시 목록에도 없다", postRepo.loadCachedUnresolved().none { it.id == RoomToFirestoreMigrator.PROBE_ID })
 

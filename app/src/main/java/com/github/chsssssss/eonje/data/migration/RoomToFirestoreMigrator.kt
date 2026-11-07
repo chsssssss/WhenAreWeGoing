@@ -144,9 +144,15 @@ class RoomToFirestoreMigrator(
                 readOne = { id -> placeDao.findById(id) },
                 idOf = { it.id },
                 toFields = { page ->
+                    val postIdsByPlace = crossRefDao.forPlaces(page.map { it.id }).groupBy({ it.placeId }, { it.postId })
                     val fixed = page.associate { entity ->
                         val place = entity.toDomain() // memo는 도메인에 없으므로 옮겨지지 않는다
-                        entity.id to LegacyDocSanitizer.place(place.copy(folderId = place.folderId?.takeIf { it in liveFolderIds }))
+                        entity.id to LegacyDocSanitizer.place(
+                            place.copy(
+                                folderId = place.folderId?.takeIf { it in liveFolderIds },
+                                postIds = postIdsByPlace[entity.id].orEmpty().sorted(),
+                            ),
+                        )
                     }
                     PageDocs(fixed.mapValues { it.value.value.toFields() }, fixed.fixedFieldsById())
                 })

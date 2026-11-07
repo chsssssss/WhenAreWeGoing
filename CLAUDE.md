@@ -81,12 +81,12 @@ firestore.rules / firestore.indexes.json   보안 규칙·인덱스 (배포는 `
 
 ```
 users/{uid}/folders/{folderId}   name, color, iconKey, createdAt
-users/{uid}/places/{placeId}     name, address, latitude, longitude, kakaoPlaceId, category, status, createdAt, resolvedAt, folderId(null=미분류)
+users/{uid}/places/{placeId}     name, address, latitude, longitude, kakaoPlaceId, category, status, createdAt, resolvedAt, folderId(null=미분류), postIds[]
 users/{uid}/posts/{postId}       instagramUrl, shortcode, caption, status, extractedCount, createdAt, unresolvedReason, placeIds[], candidates[]
 ```
 
 - enum은 이름 문자열, 시간은 기기에서 만든 Long 밀리초(serverTimestamp 안 씀), 색은 ARGB 정수. **문서 ID는 UUID 문자열**이다 — 직접 공유하면 `ShareKey.postId(shortcode)`에서 만든 결정적 UUID, 장소·폴더는 `UUID.randomUUID()`, Room에서 옮긴 것은 Room의 UUID 그대로.
-- **게시물-장소 연결은 게시물 문서의 `placeIds` 배열**이다(장소 문서엔 게시물 정보가 없다). **검색 후보는 별도 컬렉션이 아니라 게시물 문서의 `candidates` 배열**이다(정리하면 사라지는 임시 데이터, 항목당 최대 5개라 문서 크기 한도 1MiB에 한참 못 미친다). 비어 있는 배열은 필드를 만들지 않는다.
+- **게시물-장소 연결은 게시물 문서의 `placeIds` 배열이 원본이고, 장소 문서의 `postIds` 배열이 그 역방향이다**(`linkPostToPlace`와 게시물 삭제가 같은 쓰기 묶음으로 둘을 같이 고친다). `postIds`는 홈 목록이 게시물 문서를 읽지 않고도 개수·썸네일을 알게 하려는 것이다 — Firestore는 읽은 문서 수만큼 과금하므로, 홈은 확정 게시물 전체를 듣지 않고 장소 문서만 듣는다. 장소 카드의 썸네일은 `postIds` 순서대로 이 기기에 `{postId}.jpg`가 있는 첫 게시물의 것(도메인 `Place.thumbnailUrl`, 문서엔 저장 안 함). 게시물 본문은 상세 모드가 열려 있는 동안만 `posts.whereArrayContains(placeIds, 장소)`로 듣는다(`observePostsForPlace`, 단일 필드 자동 인덱스). 비어 있는 `postIds`는 필드를 만들지 않고, 규칙 상한은 200 **검색 후보는 별도 컬렉션이 아니라 게시물 문서의 `candidates` 배열**이다(정리하면 사라지는 임시 데이터, 항목당 최대 5개라 문서 크기 한도 1MiB에 한참 못 미친다). 비어 있는 배열은 필드를 만들지 않는다.
 - 문서에 없는 것: `memo`(기능 제거됨), `thumbnailUrl` — 썸네일은 인스타 CDN을 `ThumbnailStore`가 기기에 받아둔 `{postId}.jpg`이고, 읽을 때 파일이 있으면 도메인 `SavedPost.thumbnailUrl`을 `file://`로 채우고 없으면 null이다(다른 기기에선 썸네일 없음을 허용, Storage는 안 쓴다).
 - 필드 ↔ 도메인 변환은 `data/firestore/FirestoreMappers.kt` 한 곳이다. 이전된 데이터와 새로 만든 데이터의 문서 모양이 달라지면 안 되므로 새 필드는 여기서만 추가한다. **새 필드·enum 값을 추가하면 `firestore.rules`의 허용 목록과 `FirestoreRulesTest`도 같이 고친다** — 안 고치면 서버가 쓰기를 거부하고, 앱은 로그만 남기고 그 쓰기를 버린다(`logFailure`).
 - 친구 공유는 별도 최상위 컬렉션으로 추가할 예정이라 이 구조가 막지 않는다(보안 규칙도 그때 따로 추가).
@@ -237,7 +237,7 @@ enum class UnresolvedReason {
 - **삭제 연쇄 로직의 위치**(DAO가 아니라 Firestore 저장소 구현에 있다 — 문서 DB는 외래 키가 없어서 코드가 대신한다):
   - 폴더 삭제 = `FirestoreFolderRepository.delete`: 그 폴더의 장소를 전부 `folderId = null`로 바꾸는 쓰기를 먼저, 폴더 문서 삭제를 마지막에 WriteBatch(499개씩 나눠 커밋)로 보낸다. 중간에 끊겨도 "삭제된 폴더를 가리키는 장소"는 안 생긴다
   - 장소 삭제 = `FirestorePlaceRepository.delete`: 장소 문서 삭제 + 그 장소를 가리키는 게시물의 `placeIds`에서 `arrayRemove`(WriteBatch). 게시물은 남는다
-  - 게시물 삭제 = `FirestoreSavedPostRepository.deleteByIds`: 문서 삭제 + 기기의 `{postId}.jpg` 삭제(`ThumbnailStore.deleteAll`)
+  - 게시물 삭제 = `FirestoreSavedPostRepository.deleteByIds`: 문서 삭제 + 그 게시물의 `placeIds`(캐시에서 읽음)에 있는 장소들의 `postIds`에서 `arrayRemove`(별도 배치 — 장소가 이미 없어서 실패해도 게시물 삭제를 막지 않는다) + 기기의 `{postId}.jpg` 삭제(`ThumbnailStore.deleteAll`)
   - 게시물 상태 변경 = `FirestoreSavedPostRepository.updateStatus`: `UNRESOLVED`로 바꿀 때 `extractedCount`를 같은 쓰기에서 0으로 되돌린다
 - 폴더 삭제는 세 곳에서 가능하다 — ① 목록 카드의 폴더 칩으로 여는 기존 폴더 피커, ② 위의 폴더 변경 체크박스 시트, ③ 홈 목록 화면 폴더 탭 줄의 칩을 길게 누르기. 어느 경로든 확인 다이얼로그를 거치고, 삭제되면 그 폴더의 장소는 전부 미분류로 이동한다
 
@@ -266,7 +266,7 @@ enum class UnresolvedReason {
 | 계정명·캡션 조회 (F2) | Firebase Cloud Function `fetchInstagramMeta`(App Check 필수) → Apify `apify/instagram-scraper` 액터. 실패하면 WorkManager가 재시도하고, 그래도 안 되면 UNRESOLVED로 조용히 종료 | Apify 무료 티어 월 $5 크레딧 ≈ 1,850건, 그 이상은 건당 $0.0027 (2026-09 기준). 캐시 없이 공유할 때마다 호출됨 |
 | 캡션 파싱 (F2) | ML Kit GenAI(Gemini Nano) 온디바이스 우선, 미지원 기기는 Firebase AI Logic으로 Gemini Flash 무료 티어 호출 (App Check 필수, Gemini 전용 프로젝트) | 0원. 온디바이스는 추론 자체가 기기에서 일어나 무제한. 무료 티어는 분당 15회·일일 1500회(2026년 9월 기준) — 앱 전체 합산 |
 | 카카오 로컬 검색 | 클라이언트에서 REST API 직접 호출, 카카오 개발자 콘솔에서 앱 서명(SHA) 기반 키 제한 설정 | 카카오 무료 쿼터 내 |
-| Firestore(데이터 원본) | `wherewegoing-a5493`(Blaze)의 Firestore(서울 리전, 프로덕션 모드로 만들 예정 — 콘솔 작업은 11단계 참고). 쓰기는 호출만 하고 서버 응답을 기다리지 않는다. 리스너는 `shareIn(WhileSubscribed(5000))`로 화면을 벗어나면 해제, 위젯·`InboxReminderWorker`는 `Source.CACHE`로 캐시만 읽는다(서버 호출 금지). 영구 캐시 20MB 상한(`FirestoreSetup`) | 무료 한도(하루 읽기 5만·쓰기 2만·삭제 2만, 1GiB 저장) 안에서 운영, **예산 알림으로 감시**. 앱을 한 번 열 때 읽기는 대략 장소 수 + 확정 게시물 수 + 미확정 수 + 폴더 수(캐시가 유효하면 바뀐 문서만, 백그라운드 30분 넘으면 처음부터). Room 이전은 사용자당 1회: 쓰기 N건 + 읽기 약 N/30건 |
+| Firestore(데이터 원본) | `wherewegoing-a5493`(Blaze)의 Firestore(서울 리전, 프로덕션 모드로 만들 예정 — 콘솔 작업은 11단계 참고). 쓰기는 호출만 하고 서버 응답을 기다리지 않는다. 리스너는 `shareIn(WhileSubscribed(5000))`로 화면을 벗어나면 해제, 위젯·`InboxReminderWorker`는 `Source.CACHE`로 캐시만 읽는다(서버 호출 금지). 영구 캐시 20MB 상한(`FirestoreSetup`) | 무료 한도(하루 읽기 5만·쓰기 2만·삭제 2만, 1GiB 저장) 안에서 운영, **예산 알림으로 감시**. 앱을 한 번 열 때 읽기는 대략 장소 수 + 미확정 수 + 폴더 수(캐시가 유효하면 바뀐 문서만, 백그라운드 30분 넘으면 처음부터). 확정 게시물은 홈에서 읽지 않고, 장소 상세를 열 때 그 장소의 게시물만 읽는다. Room 이전은 사용자당 1회: 쓰기 N건 + 읽기 약 N/30건 |
 | Cloud Functions(Apify 게이트웨이) 인프라 | Cloud Run 2세대 위에서 실행. `wherewegoing-a5493`은 Secret Manager(Apify 토큰 보관)를 쓰려고 Blaze로 전환함 | Blaze 무료 티어: 월 200만 건 호출, 40만 GB-초, 5GB 아웃바운드까지 무료. 컨테이너 이미지는 배포 시 1일 뒤 자동 삭제 정책으로 스토리지 비용 억제 |
 
 **API 키를 앱에 직접 내장하지 않는 이유** — APK는 디컴파일 가능해서, 내장된 키는 노출되면 누구나 그 키로 무제한 요청을 보낼 수 있고 비용은 키 소유자에게 청구된다. Firebase AI Logic은 이 문제를 게이트웨이 구조로 해결해서, 서버를 직접 짜지 않아도 클라이언트에서 안전하게 Gemini를 호출할 수 있다. 카카오는 앱 서명 기반 키 제한으로, Apify 토큰은 Firebase Cloud Function(Secret Manager) 뒤에 숨겨서 같은 문제를 해결한다.
