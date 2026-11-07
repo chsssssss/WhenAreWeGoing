@@ -1,6 +1,11 @@
 package com.github.chsssssss.eonje.data.account
 
 import android.util.Log
+import com.github.chsssssss.eonje.data.account.merge.AccountMergeIo
+import com.github.chsssssss.eonje.data.account.merge.AccountMergeJournal
+import com.github.chsssssss.eonje.data.account.merge.AccountMergePlanner
+import com.github.chsssssss.eonje.data.account.merge.JournalData
+import com.github.chsssssss.eonje.data.account.merge.MergeStage
 import com.github.chsssssss.eonje.data.firestore.AuthSession
 import com.github.chsssssss.eonje.data.firestore.commitInChunksAndAwait
 import com.github.chsssssss.eonje.data.firestore.folders
@@ -13,6 +18,9 @@ import com.github.chsssssss.eonje.domain.repository.AccountState
 import com.github.chsssssss.eonje.domain.repository.DeleteResult
 import com.github.chsssssss.eonje.domain.repository.DeleteStep
 import com.github.chsssssss.eonje.domain.repository.LinkResult
+import com.github.chsssssss.eonje.domain.repository.MergeCounts
+import com.github.chsssssss.eonje.domain.repository.MergePreview
+import com.github.chsssssss.eonje.domain.repository.SwitchResult
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
@@ -45,6 +53,8 @@ class AccountRepositoryImpl @Inject constructor(
     private val cleanup: AccountLocalCleanup,
     private val workControl: AccountWorkControl,
     private val authSession: AuthSession,
+    private val mergeJournal: AccountMergeJournal,
+    private val mergeIo: AccountMergeIo,
     @ApplicationScope scope: CoroutineScope,
 ) : AccountRepository {
 
@@ -88,6 +98,102 @@ class AccountRepositoryImpl @Inject constructor(
             Log.w(TAG, "계정 연결 실패(${e.javaClass.simpleName})")
             LinkResult.Failed
         }
+    }
+
+    // ── 충돌: 이미 다른 uid에 연결된 계정으로 전환 + 이 기기의 데이터 합치기 ──
+
+    override suspend fun prepareCollisionMerge(): MergePreview? {
+        val user = auth.currentUser ?: return null
+        if (!user.isAnonymous) return null
+        return try {
+            val snapshot = mergeIo.readSnapshot(user.uid)
+            if (snapshot.isEmpty) {
+                mergeJournal.delete()
+                MergePreview(0, 0, 0)
+            } else {
+                // 전환하면 익명 uid의 데이터는 읽을 수 없다 — 지금 읽어서 기기에 남긴다. 사용자가 정하기 전(SNAPSHOT)에 앱이 죽으면
+                // 다음 시작에서 이 저널은 버려진다(익명 상태 그대로라 연결을 다시 하면 된다).
+                mergeJournal.write(JournalData(user.uid, MergeStage.SNAPSHOT, snapshot))
+                MergePreview(snapshot.folders.size, snapshot.places.size, snapshot.posts.size)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "합칠 데이터 읽기 실패(${e.javaClass.simpleName})")
+            null
+        }
+    }
+
+    override suspend fun switchToExistingAccount(merge: Boolean): SwitchResult {
+        val credential = pendingCollisionCredential ?: return SwitchResult.Failed
+        val journal = if (merge) mergeJournal.read() else null
+        // **새 uid가 생기기 전에** Room 이전을 영구 종료한다. 안 하면 전환한 계정에 Room 원본이 올라가 버린다.
+        migrationStore.markClosed()
+        try {
+            if (journal != null) mergeJournal.write(journal.copy(stage = MergeStage.SWITCHING)) else mergeJournal.delete()
+            auth.signInWithCredential(credential).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FirebaseNetworkException) {
+            return SwitchResult.NetworkError
+        } catch (e: Exception) {
+            Log.w(TAG, "계정 전환 실패(${e.javaClass.simpleName})")
+            return SwitchResult.Failed
+        }
+        pendingCollisionCredential = null
+        _state.value = currentState()
+        if (journal == null) {
+            mergeJournal.delete()
+            cleanup.scheduleThumbnailMaintenance()
+            return SwitchResult.Switched(merged = null)
+        }
+        val uid = auth.currentUser?.uid ?: return SwitchResult.SwitchedMergePending
+        return try {
+            SwitchResult.Switched(merged = runMerge(uid, journal.copy(stage = MergeStage.SWITCHING)))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 저널이 남아 있다 — 다음 시작에 이어서 합친다.
+            Log.w(TAG, "합치기 중단(${e.javaClass.simpleName}) — 다음에 이어서 합친다")
+            SwitchResult.SwitchedMergePending
+        }
+    }
+
+    override suspend fun cancelCollisionMerge() {
+        pendingCollisionCredential = null
+        mergeJournal.delete()
+    }
+
+    override suspend fun resumePendingMerge(): MergeCounts? {
+        val data = mergeJournal.read() ?: return null
+        val uid = auth.currentUser?.uid
+        return try {
+            when (data.stage) {
+                // 사용자가 정하기 전이거나, 합치기를 골랐지만 전환이 끝나지 않았다(uid가 그대로) — 익명 상태 그대로이니 저널을 버린다.
+                MergeStage.SNAPSHOT -> { mergeJournal.delete(); null }
+                MergeStage.SWITCHING ->
+                    if (uid == null || uid == data.fromUid) { mergeJournal.delete(); null } else runMerge(uid, data)
+                // 계획이 있다. 같은 계정일 때만 이어서 쓴다(그사이 다른 계정으로 바뀌었으면 버린다).
+                MergeStage.MERGING -> if (uid != null && uid == data.targetUid) runMerge(uid, data) else { mergeJournal.delete(); null }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "끊긴 합치기 재개 실패(${e.javaClass.simpleName})")
+            null
+        }
+    }
+
+    /** 계획을 계산(없으면)해 저널에 저장하고, 쓰고, 썸네일을 옮기고, 저널을 지운다. 어디서 끊겨도 같은 계획으로 다시 하면 된다(멱등). */
+    private suspend fun runMerge(uid: String, data: JournalData): MergeCounts {
+        val plan = data.plan ?: AccountMergePlanner.plan(data.snapshot, mergeIo.readTarget(uid, data.snapshot)).also { computed ->
+            mergeJournal.write(data.copy(stage = MergeStage.MERGING, targetUid = uid, plan = computed))
+        }
+        mergeIo.execute(uid, plan)
+        mergeIo.adoptThumbnails(plan.thumbnailAdoptions)
+        mergeJournal.delete()
+        cleanup.scheduleThumbnailMaintenance()
+        return MergeCounts(plan.folderWrites.size, plan.placeWrites.size, plan.postWrites.size)
     }
 
     override suspend fun signOut() {

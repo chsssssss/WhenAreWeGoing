@@ -65,6 +65,29 @@ class ThumbnailMaintenanceTest {
         assertEquals("오래된 tmp만 지운다", 1, report.orphansDeleted)
     }
 
+    @Test
+    fun `계정 합치기 저널이 있는 동안에는 고아 판정을 하지 않고 저널이 지워지면 다시 한다`() = runBlocking {
+        file("anon-post.jpg", 10) // 합치기가 계정 쪽 게시물 이름으로 옮겨 쓸 익명 게시물의 썸네일 — 서버 게시물과 아직 안 맞는다
+        file("old.jpg.tmp", 10).setLastModified(now - ThumbnailPolicy.STALE_TMP_MILLIS - 1)
+        val posts = FakePosts(listOf(post("account-post")))
+        var mergeActive = true
+        val maintenance = ThumbnailMaintenance(
+            ThumbnailStore(dir, OkHttpClient(), FakeCodec()), posts, FakeState(done = true), FakeLegacy(complete = true),
+            mergeInProgress = { mergeActive },
+        )
+
+        val during = maintenance.run(now)
+
+        assertEquals(0, during.orphansDeleted)
+        assertTrue("서버 확인도 하지 않는다", posts.serverChecks.isEmpty())
+        assertEquals(listOf("anon-post.jpg", "old.jpg.tmp"), dir.list()!!.sorted())
+
+        mergeActive = false // 저널이 지워졌다
+        maintenance.run(now)
+
+        assertTrue("이제는 고아 판정을 한다(서버에 물었다)", posts.serverChecks.isNotEmpty())
+    }
+
     // ── 서버 확인: 캐시 기준 의심 파일은 서버에도 없을 때만 지운다 ──
 
     @Test

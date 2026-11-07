@@ -7,6 +7,7 @@ import com.github.chsssssss.eonje.data.local.EonjeDatabase
 import com.github.chsssssss.eonje.data.local.ThumbnailStore
 import com.github.chsssssss.eonje.data.worker.CaptionParsingWorker
 import com.github.chsssssss.eonje.data.worker.RoomMigrationWorker
+import com.github.chsssssss.eonje.data.worker.ThumbnailMaintenanceWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -57,6 +58,9 @@ interface AccountLocalCleanup {
 
     /** 다음 앱 콜드 스타트에 Firestore 로컬 캐시를 지우도록 표시한다(실행 중엔 지울 수 없다). */
     fun requestFirestoreCacheClear()
+
+    /** 합치기 저널이 사라진 뒤 썸네일 고아 정리를 다시 돌린다(저널이 있는 동안엔 건너뛰었다). */
+    fun scheduleThumbnailMaintenance()
 }
 
 @Singleton
@@ -65,6 +69,7 @@ class AccountLocalCleanupImpl @Inject constructor(
     private val thumbnailStore: ThumbnailStore,
     private val placeSyncStore: PlaceSyncStore,
     private val database: EonjeDatabase,
+    private val workManager: WorkManager,
 ) : AccountLocalCleanup {
     override suspend fun clearDeviceCaches() = withContext(Dispatchers.IO) {
         thumbnailStore.clearAll()
@@ -74,6 +79,8 @@ class AccountLocalCleanupImpl @Inject constructor(
     override suspend fun clearLegacyRoom() = withContext(Dispatchers.IO) { database.clearAllTables() }
 
     override fun requestFirestoreCacheClear() = FirestoreCacheClearFlag.request(context)
+
+    override fun scheduleThumbnailMaintenance() = ThumbnailMaintenanceWorker.enqueue(workManager)
 }
 
 /** SharedPreferences라서 Application.onCreate(Firestore를 쓰기 전)에서 동기로 읽을 수 있다. */

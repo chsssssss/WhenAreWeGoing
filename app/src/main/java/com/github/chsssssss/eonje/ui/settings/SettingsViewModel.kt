@@ -10,6 +10,7 @@ import com.github.chsssssss.eonje.domain.repository.DeleteStep
 import com.github.chsssssss.eonje.domain.repository.LegacyMigrationPhase
 import com.github.chsssssss.eonje.domain.repository.LegacyMigrationStatus
 import com.github.chsssssss.eonje.domain.repository.LinkResult
+import com.github.chsssssss.eonje.domain.repository.SwitchResult
 import com.github.chsssssss.eonje.domain.repository.ThemePreferenceRepository
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.logEvent
@@ -74,7 +75,7 @@ class SettingsViewModel @Inject constructor(
     fun onLinkToken(idToken: String) {
         viewModelScope.launch {
             val result = accountRepository.linkWithGoogle(idToken)
-            _uiState.update { it.copy(busy = null) }
+            if (result != LinkResult.Collision) _uiState.update { it.copy(busy = null) }
             when (result) {
                 LinkResult.Success -> {
                     analytics.logEvent(Events.ACCOUNT_LINK_SUCCEEDED, null)
@@ -82,7 +83,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 LinkResult.Collision -> {
                     analytics.logEvent(Events.ACCOUNT_LINK_FAILED) { param(Events.Param.ERROR_TYPE, Events.AccountError.COLLISION) }
-                    _messages.trySend("이미 다른 기기에서 쓰고 있는 Google 계정이에요")
+                    handleCollision()
                 }
                 LinkResult.NetworkError -> {
                     analytics.logEvent(Events.ACCOUNT_LINK_FAILED) { param(Events.Param.ERROR_TYPE, Events.AccountError.NETWORK) }
@@ -93,6 +94,60 @@ class SettingsViewModel @Inject constructor(
                     _messages.trySend("계정을 연결하지 못했어요. 잠시 뒤 다시 시도해주세요")
                 }
             }
+        }
+    }
+
+    // ── 이미 다른 기기에서 쓰던 계정으로 로그인(충돌) ──
+
+    /** 이 기기의 데이터를 먼저 읽어 두고(전환하면 못 읽는다), 데이터가 있으면 합칠지 묻고, 없으면 바로 전환한다. */
+    private suspend fun handleCollision() {
+        val preview = accountRepository.prepareCollisionMerge()
+        when {
+            preview == null -> {
+                accountRepository.cancelCollisionMerge()
+                _uiState.update { it.copy(busy = null) }
+                _messages.trySend("계정으로 전환하지 못했어요. 인터넷을 확인하고 다시 시도해주세요")
+            }
+            preview.isEmpty -> switchToExistingAccount(merge = false)
+            else -> _uiState.update { it.copy(busy = null, dialog = AccountDialog.MERGE, mergePreview = preview) }
+        }
+    }
+
+    fun onMergeDecision(merge: Boolean) {
+        _uiState.update { it.copy(dialog = null, mergePreview = null, busy = AccountBusy.LINKING) }
+        viewModelScope.launch { switchToExistingAccount(merge) }
+    }
+
+    /** 합칠지 묻는 창을 그냥 닫았다 — 연결을 취소하고 익명 상태를 유지한다. */
+    fun onMergeCancelled() {
+        _uiState.update { it.copy(dialog = null, mergePreview = null) }
+        viewModelScope.launch {
+            accountRepository.cancelCollisionMerge()
+            _messages.trySend("계정 연결을 취소했어요")
+        }
+    }
+
+    private suspend fun switchToExistingAccount(merge: Boolean) {
+        val result = accountRepository.switchToExistingAccount(merge)
+        _uiState.update { it.copy(busy = null) }
+        when (result) {
+            is SwitchResult.Switched -> {
+                analytics.logEvent(Events.ACCOUNT_LINK_SUCCEEDED, null)
+                result.merged?.let { counts ->
+                    analytics.logEvent(Events.ACCOUNT_MERGE_COMPLETED) {
+                        param(Events.Param.FOLDER_COUNT, counts.folders.toLong())
+                        param(Events.Param.PLACE_COUNT, counts.places.toLong())
+                        param(Events.Param.POST_COUNT, counts.posts.toLong())
+                    }
+                }
+                _messages.trySend(if (result.merged != null) "계정으로 전환하고 이 기기의 데이터를 합쳤어요" else "계정으로 전환했어요")
+            }
+            SwitchResult.SwitchedMergePending -> {
+                analytics.logEvent(Events.ACCOUNT_LINK_SUCCEEDED, null)
+                _messages.trySend("계정으로 전환했어요. 이 기기의 데이터는 인터넷이 연결되면 이어서 합쳐요")
+            }
+            SwitchResult.NetworkError -> _messages.trySend("인터넷에 연결되어 있는지 확인해주세요")
+            SwitchResult.Failed -> _messages.trySend("계정으로 전환하지 못했어요. 잠시 뒤 다시 시도해주세요")
         }
     }
 

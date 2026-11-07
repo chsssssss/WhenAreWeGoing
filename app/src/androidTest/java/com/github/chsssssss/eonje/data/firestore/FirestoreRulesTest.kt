@@ -204,7 +204,7 @@ class FirestoreRulesTest {
     @Test
     fun 계정을_연결한_사용자도_같은_uid로_같은_규칙을_통과하고_다른_사용자는_여전히_막힌다() = runBlocking<Unit> {
         place("before-link", place().toFields())
-        val token = """{"sub":"rules-linked-${System.nanoTime()}","email":"rules@example.com","email_verified":true}"""
+        val token = """{"sub":"rules-linked-${System.nanoTime()}","email":"rules-${System.nanoTime()}@example.com","email_verified":true}"""
         auth.currentUser!!.linkWithCredential(com.google.firebase.auth.GoogleAuthProvider.getCredential(token, null)).await()
         auth.currentUser!!.getIdToken(true).await() // 요청의 auth 토큰이 비익명(provider=google.com)으로 바뀐 걸 반영
         assertEquals("연결은 uid를 바꾸지 않는다", uid, auth.currentUser!!.uid)

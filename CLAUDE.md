@@ -463,8 +463,18 @@ enum class UnresolvedReason {
 - **계정/데이터 삭제**(`deleteAccount`): 백그라운드 일시정지(`AccountWorkControl`: 공유 저장 Worker는 `AccountOperationGate`로 재시도 미룸, 캡션 파싱·Room 이전 Worker는 취소) → 연결된 계정은 재인증(Google 다시 로그인) → `folders`·`places`·`posts`를 서버에서 읽어 전부 삭제(서버 확정까지 await, 묘비 포함)하고 **0건이 나올 때까지 최대 3회 반복**(삭제 중 들어온 문서 대비) → 플래그 → `user.delete()` → 로컬 정리(썸네일·`PlaceSyncStore`·Room 비우기·캐시 정리 예약) → 새 익명 세션. 어느 단계에서 멈췄는지(`DeleteStep`: REAUTH·DATA·ACCOUNT)를 알리고 다시 시도하면 이어서 끝난다. 익명 사용자도 같은 흐름(재인증 없음, 계정 삭제가 거부되면 로그아웃으로 대신)
   - 문서를 지우려고 읽으므로 읽기가 문서 수만큼 한 번 든다
 - **Firestore 캐시 정리는 다음 콜드 스타트에**: 로그아웃·삭제 뒤 `FirestoreCacheClearFlag`(SharedPreferences `account_local_state`)를 세우고, `EonjeApplication`이 `FirestoreSetup.configure` 직후(어떤 저장소도 만들어지기 전)에 `clearPersistence()`한다(Firestore는 첫 사용 전에만 캐시를 지울 수 있다). 성공해야 표시를 지운다
+- **충돌: 이미 다른 uid에 연결된 Google 계정으로 로그인**(`LinkResult.Collision` → `prepareCollisionMerge` → `switchToExistingAccount(merge)`; 새 기기에서 설치해 익명으로 조금 쓰다가 기존 계정으로 로그인하는 경로). 전환하면 익명 uid의 데이터는 못 읽으므로 **전환 전에** 읽는다
+  1. 익명 데이터(폴더·장소·게시물, 묘비 제외)를 스냅샷으로 읽어 **저널 파일**(`noBackupFilesDir/account_merge_journal.json`, 자동 백업 제외)에 저장한다. 데이터가 없으면 저널 없이 묻지 않고 바로 전환한다. 캡션이 포함된 사용자 데이터가 **합치는 동안만** 기기에 파일로 남고 끝나면 지운다
+  2. 사용자에게 묻는다: [합치기] / [합치지 않기](= 계정 데이터만 사용). 창을 그냥 닫으면 연결을 취소하고 익명 상태를 유지한다
+  3. 전환 **직전에** Room 이전 영구 종료 플래그를 켠다 → `signInWithCredential` → (합치기면) 계획을 한 번 계산해 저널에 저장하고(`MERGING`) → 쓰고 → 썸네일 옮기고 → 저널 삭제 → 썸네일 정리 다시 예약
+  - **합치기 규칙**(`AccountMergePlanner`, 순수 함수·단위 테스트): 폴더는 **이름**이 같으면 계정 쪽을 쓰고 장소의 `folderId`를 매핑. 장소는 `kakaoPlaceId`가 같으면 계정 쪽(묘비면 되살림), 없으면 항상 새로 만듦. 게시물은 **문서 ID가 아니라 `ShareKey.of(shortcode, url)`**(shortcode, 없으면 `u-` 해시)로 같은 게시물인지 보고, 계정 쪽에 있으면 계정 쪽을 쓰고 익명 쪽은 버린다. 게시물은 `candidates` **포함 통째로** 옮긴다(후보가 없으면 인박스 항목이 후보를 잃는다). 장소의 `postIds`·게시물의 `placeIds`는 매핑표로 다시 써서 서로 일관되게 둔다 — 버려진 게시물은 계정 쪽 게시물을 건드리지 않으므로 새 장소에 연결하지 않는다. 문서 ID가 계정 쪽과 겹치면 결정적 새 ID를 쓴다(다시 계산해도 같다)
+  - **쓰기는 폴더 → 장소 → 장소 연결(계정에 있던 장소의 `postIds` 보강, 실패해도 계속) → 게시물 순서이고 전부 `set`/`arrayUnion`이라 멱등**이다. 끊기면 저널의 같은 계획으로 처음부터 다시 쓴다. 장소 쓰기엔 `updatedAt`(`Place.toFields()`/`placeUpdate`)
+  - 버려진 익명 게시물의 썸네일 파일은 **살아남는 계정 쪽 게시물에 썸네일이 없을 때만** 그 postId 이름으로 복사한다(`ThumbnailStore.adopt`)
+  - **끊긴 합치기 이어하기**(앱 시작 때 `resumePendingMerge`): 저널 단계가 `SNAPSHOT`(아직 안 정함)이면 버리고, `SWITCHING`(합치기를 골랐다)이면 uid가 이미 바뀌었을 때만 이어서 합치고(그대로면 전환이 안 된 것이니 버림), `MERGING`이면 같은 계정(`targetUid`)일 때만 계획대로 이어 쓴다
+  - **저널이 있는 동안 `ThumbnailMaintenance`는 고아 판정을 하지 않는다**(`MergeInProgress`). 저널이 지워지면 합치기 쪽이 `ThumbnailMaintenanceWorker`를 다시 예약한다
+  - 한계: 이전 익명 uid의 서버 데이터는 **지우지 않는다**(전환 뒤엔 그 uid로 접근할 수 없고, 지우려면 서버 코드가 필요한데 두지 않는다 — 작은 고아 데이터로 남는다). 스냅샷을 읽은 뒤 전환 전에 공유로 저장된 게시물은 합쳐지지 않을 수 있다(짧은 틈)
 - **local.properties**: `GOOGLE_WEB_CLIENT_ID` — **`wherewegoing-a5493` 프로젝트의 OAuth 웹 클라이언트 ID**여야 한다(Firebase Authentication에서 Google 로그인을 켜면 만들어지는 "웹 클라이언트"). Gemini 프로젝트(`fir-gemini-706d3`)의 ID를 넣으면 로그인이 실패한다. 값은 커밋하지 않는다
-- Analytics: `account_link_started/succeeded/failed`(`error_type`: cancelled·network·collision·unknown), `account_signed_out`, `account_deleted`, `account_delete_failed`(`step`). 이메일·uid·내용은 넣지 않는다
+- Analytics: `account_link_started/succeeded/failed`(`error_type`: cancelled·network·collision·unknown), `account_merge_completed`(폴더·장소·게시물 개수만), `account_signed_out`, `account_deleted`, `account_delete_failed`(`step`). 이메일·uid·내용은 넣지 않는다
 - 자동 테스트는 Auth 에뮬레이터의 가짜 Google ID 토큰(JSON 문자열)으로 한다(`AccountRepositoryTest`, `FirestoreRulesTest`의 연결된 사용자). **실제 Google 로그인과 Credential Manager UI는 자동화하지 않았다**(실기기 수동 확인 필요)
 
 ## 코딩 컨벤션

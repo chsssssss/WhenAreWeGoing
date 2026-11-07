@@ -90,6 +90,22 @@ class ThumbnailStore internal constructor(
         return if (file.isFile && file.length() > 0) "file://${file.absolutePath}" else null
     }
 
+    /**
+     * [fromKey]의 썸네일을 [toKey] 이름으로 복사한다 — [toKey]에 이미 썸네일이 있으면 아무것도 하지 않는다(계정 합치기에서 버려진 익명
+     * 게시물의 썸네일을 살아남는 게시물이 못 갖고 있을 때만 쓴다). 원본 파일은 남기고, 고아가 되면 정리 쪽이 지운다.
+     */
+    fun adopt(fromKey: String, toKey: String): Boolean {
+        if (existingUrl(toKey) != null) return false
+        val from = File(dir, "$fromKey.jpg")
+        if (!from.isFile || from.length() == 0L) return false
+        return try {
+            from.copyTo(File(dir, "$toKey.jpg"), overwrite = false)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     /** 받아둔 썸네일을 전부 지운다(로그아웃·계정 삭제). */
     fun clearAll() {
         dir.listFiles()?.forEach { if (it.isFile) it.delete() }

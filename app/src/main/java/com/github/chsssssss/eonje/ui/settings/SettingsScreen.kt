@@ -124,6 +124,22 @@ fun SettingsScreen(
                 onDismiss = viewModel::onDismissDialog,
             )
         }
+        AccountDialog.MERGE -> {
+            val preview = uiState.mergePreview
+            val summary = preview?.let { "장소 ${it.places}곳, 게시물 ${it.posts}개, 폴더 ${it.folders}개" }.orEmpty()
+            AlertDialog(
+                onDismissRequest = viewModel::onMergeCancelled,
+                title = { Text("이 기기의 데이터를 계정에 합칠까요?") },
+                text = {
+                    Text(
+                        "이 기기에 저장한 데이터($summary)가 있어요. 합치면 이미 계정에 있는 것과 겹치는 항목은 계정 쪽을 쓰고, 나머지를 계정에 추가해요. " +
+                            "합치지 않으면 이 기기의 데이터는 계정에 올라가지 않아요.",
+                    )
+                },
+                confirmButton = { TextButton(onClick = { viewModel.onMergeDecision(true) }) { Text("합치기") } },
+                dismissButton = { TextButton(onClick = { viewModel.onMergeDecision(false) }) { Text("합치지 않기") } },
+            )
+        }
         null -> Unit
     }
 }

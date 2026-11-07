@@ -57,6 +57,11 @@ class ThumbnailMaintenanceStateImpl @Inject constructor(
 /** 1회 정리 결과. [processedFiles]는 줄였거나 지운 파일 수, [savedBytes]는 그만큼 줄어든 용량. */
 data class CompactionReport(val processedFiles: Int, val savedBytes: Long)
 
+/** 계정 합치기가 진행 중인지(저널 파일이 있는지). 진행 중에는 썸네일 고아 정리를 하지 않는다. */
+fun interface MergeInProgress {
+    fun isActive(): Boolean
+}
+
 /** [compaction]은 이번 실행에서 1회 정리를 했을 때만 있다. */
 data class MaintenanceReport(val orphansDeleted: Int, val compaction: CompactionReport?)
 
@@ -71,8 +76,12 @@ class ThumbnailMaintenance @Inject constructor(
     private val posts: SavedPostRepository,
     private val state: ThumbnailMaintenanceState,
     private val legacyMigration: LegacyMigrationStatus,
+    private val mergeInProgress: MergeInProgress = MergeInProgress { false },
 ) {
     suspend fun run(nowMillis: Long): MaintenanceReport = withContext(Dispatchers.IO) {
+        // 계정 합치기 저널이 있는 동안엔 고아 판정을 하지 않는다 — 합치기가 쓸 썸네일(익명 게시물의 파일)을 지우면 복구할 수 없다.
+        // 저널이 지워지면 합치기 쪽이 이 작업을 다시 예약한다.
+        if (mergeInProgress.isActive()) return@withContext MaintenanceReport(0, null)
         // 순서가 중요하다: 파일 목록을 먼저 만들고 그다음에 DB의 게시물을 읽는다.
         // 게시물 행은 파일보다 먼저 생기므로, 목록에 있는 파일의 게시물은 항상 이후 읽기에 들어 있다.
         // 반대로 하면 그 사이에 새로 저장된 게시물의 파일을 고아로 잘못 지울 수 있다.

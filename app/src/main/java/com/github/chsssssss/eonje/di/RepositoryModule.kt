@@ -6,6 +6,8 @@ import com.github.chsssssss.eonje.data.firestore.FirestoreFolderRepository
 import com.github.chsssssss.eonje.data.firestore.FirestorePlaceRepository
 import com.github.chsssssss.eonje.data.firestore.FirestoreSavedPostRepository
 import com.github.chsssssss.eonje.data.account.AccountLocalCleanup
+import com.github.chsssssss.eonje.data.account.merge.AccountMergeJournal
+import com.github.chsssssss.eonje.data.local.MergeInProgress
 import com.github.chsssssss.eonje.data.account.AccountLocalCleanupImpl
 import com.github.chsssssss.eonje.data.account.AccountRepositoryImpl
 import com.github.chsssssss.eonje.data.account.AccountWorkControl
@@ -81,6 +83,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAccountRepository(impl: AccountRepositoryImpl): AccountRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMergeInProgress(impl: AccountMergeJournal): MergeInProgress
 
     @Binds
     @Singleton

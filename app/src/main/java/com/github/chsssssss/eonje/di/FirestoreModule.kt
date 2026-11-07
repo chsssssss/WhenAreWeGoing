@@ -2,6 +2,7 @@ package com.github.chsssssss.eonje.di
 
 import com.github.chsssssss.eonje.data.firestore.AuthSession
 import com.github.chsssssss.eonje.data.firestore.wherewegoingApp
+import com.github.chsssssss.eonje.domain.repository.AccountRepository
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -46,4 +47,8 @@ object FirestoreModule {
 @InstallIn(SingletonComponent::class)
 interface AuthSessionEntryPoint {
     fun authSession(): AuthSession
+    fun accountRepository(): AccountRepository
+
+    @ApplicationScope
+    fun applicationScope(): CoroutineScope
 }

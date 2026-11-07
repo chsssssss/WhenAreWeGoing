@@ -11,6 +11,7 @@ import com.github.chsssssss.eonje.data.remote.WHEREWEGOING_FIREBASE_APP_NAME
 import com.github.chsssssss.eonje.data.remote.appCheckProviderFactory
 import com.github.chsssssss.eonje.data.worker.InboxReminderWorker
 import com.github.chsssssss.eonje.data.worker.RoomMigrationWorker
+import kotlinx.coroutines.launch
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -103,6 +104,10 @@ class EonjeApplication : Application(), Configuration.Provider {
         FirestoreSetup.configure(app)
         FirestoreSetup.clearCacheIfRequested(app, this)
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).authSession().startAnonymousSignIn()
+        // 계정 합치기가 도중에 끊겼으면(저널이 남아 있으면) 이어서 끝낸다. 없으면 파일 존재 확인뿐이다.
+        EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).let { entry ->
+            entry.applicationScope().launch { entry.accountRepository().resumePendingMerge() }
+        }
         // 업데이트 전의 Room 데이터를 Firestore로 한 번 옮긴다. 이미 끝났으면 바로 끝나는 가벼운 작업이다.
         RoomMigrationWorker.enqueue(WorkManager.getInstance(this))
     }

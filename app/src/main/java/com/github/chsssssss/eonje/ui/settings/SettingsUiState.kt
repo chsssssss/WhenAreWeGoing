@@ -3,12 +3,13 @@ package com.github.chsssssss.eonje.ui.settings
 import com.github.chsssssss.eonje.BuildConfig
 import com.github.chsssssss.eonje.domain.model.ThemeMode
 import com.github.chsssssss.eonje.domain.repository.AccountState
+import com.github.chsssssss.eonje.domain.repository.MergePreview
 
 /** 설정 화면에서 지금 진행 중인 계정 작업. 진행 중엔 버튼을 막는다. */
 enum class AccountBusy { LINKING, SIGNING_OUT, DELETING }
 
 /** 확인 다이얼로그. */
-enum class AccountDialog { SIGN_OUT, DELETE_ACCOUNT, DELETE_DATA }
+enum class AccountDialog { SIGN_OUT, DELETE_ACCOUNT, DELETE_DATA, MERGE }
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -19,4 +20,6 @@ data class SettingsUiState(
     val legacyMigrationPending: Boolean = false,
     val busy: AccountBusy? = null,
     val dialog: AccountDialog? = null,
+    /** 이미 쓰고 있던 계정으로 로그인할 때 "합칠까요?"에 보여줄, 이 기기에 있는 데이터 개수. */
+    val mergePreview: MergePreview? = null,
 )
