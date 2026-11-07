@@ -76,13 +76,18 @@ class SaveSharedPostWorkerTest {
         override fun scheduleSaveSharedPost(shareKey: String, url: String, shortcode: String?, createdAt: Long) = Unit
     }
 
-    private fun worker(session: Session, repo: Repo, scheduler: Scheduler): SaveSharedPostWorker {
+    private fun worker(
+        session: Session,
+        repo: Repo,
+        scheduler: Scheduler,
+        gate: com.github.chsssssss.eonje.data.account.AccountOperationGate = com.github.chsssssss.eonje.data.account.AccountOperationGate(),
+    ): SaveSharedPostWorker {
         val useCase = SaveSharedPostUseCase(repo, scheduler, session, Complete)
         return TestListenableWorkerBuilder<SaveSharedPostWorker>(context)
             .setInputData(SaveSharedPostWorker.inputData(url, "ABC123", 1234L))
             .setWorkerFactory(object : WorkerFactory() {
                 override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
-                    SaveSharedPostWorker(appContext, workerParameters, session, useCase, com.github.chsssssss.eonje.data.account.AccountOperationGate())
+                    SaveSharedPostWorker(appContext, workerParameters, session, useCase, gate)
             })
             .build()
     }
@@ -97,6 +102,23 @@ class SaveSharedPostWorkerTest {
         assertEquals(ListenableWorker.Result.retry(), result)
         assertEquals("Worker가 로그인을 시도해야 한다", 1, session.attempts)
         assertTrue(repo.posts.isEmpty())
+    }
+
+    @Test
+    fun 계정_삭제_중에는_저장을_미루고_URL을_잃지_않으며_게이트가_풀리면_저장한다() = runBlocking {
+        val session = Session(signedIn = true, failuresBeforeSuccess = 0)
+        val repo = Repo(session)
+        val scheduler = Scheduler()
+        val gate = com.github.chsssssss.eonje.data.account.AccountOperationGate()
+
+        gate.isActive = true // 삭제 중
+        assertEquals(ListenableWorker.Result.retry(), worker(session, repo, scheduler, gate).doWork())
+        assertTrue("삭제 중인 계정에 문서를 쓰지 않는다", repo.posts.isEmpty())
+        assertTrue(scheduler.captionParsing.isEmpty())
+
+        gate.isActive = false // 삭제 끝(성공이든 실패든 풀린다)
+        assertEquals(ListenableWorker.Result.success(), worker(session, repo, scheduler, gate).doWork())
+        assertEquals("미뤘던 URL이 저장된다", 1, repo.posts.size)
     }
 
     @Test

@@ -32,7 +32,12 @@ import com.github.chsssssss.eonje.domain.repository.DeleteResult
 import com.github.chsssssss.eonje.domain.repository.DeleteStep
 import com.github.chsssssss.eonje.domain.repository.LinkResult
 import com.google.firebase.auth.GoogleAuthProvider
+import androidx.work.WorkManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -92,7 +97,18 @@ class AccountRepositoryTest {
         journal = AccountMergeJournal(File(dir, "journal.json"))
         thumbDir = File(dir, "thumbs").apply { mkdirs() }
         mergeIo = AccountMergeIo(firestore, ThumbnailStore(thumbDir, OkHttpClient(), AndroidImageCodec))
-        repo = AccountRepositoryImpl(auth, firestore, store, cleanup, work, AuthSession(auth, scope), journal, mergeIo, scope)
+        repo = newRepo()
+    }
+
+    private fun newRepo(
+        workControl: AccountWorkControl = work,
+        hooks: AccountDeletionHooks = AccountDeletionHooks(),
+    ) = AccountRepositoryImpl(auth, firestore, store, cleanup, workControl, AuthSession(auth, scope), journal, mergeIo, hooks, scope)
+
+    /** 운영과 같은 게이트·작업 제어(실제 WorkManager)로 만든 저장소. 게이트가 정말 풀리는지 확인할 때 쓴다. */
+    private fun realGateRepo(gate: AccountOperationGate, hooks: AccountDeletionHooks = AccountDeletionHooks()): AccountRepositoryImpl {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        return newRepo(WorkManagerAccountWorkControl(WorkManager.getInstance(context), gate), hooks)
     }
 
     @After
@@ -401,6 +417,137 @@ class AccountRepositoryTest {
 
         assertFalse(journal.exists())
         assertEquals("엉뚱한 계정에 쓰지 않았다", 1, serverCount(acctUid, "places"))
+    }
+
+    // ── 삭제 중 문서가 끼어드는 경우 ──
+
+    /** 한 회차 삭제가 끝난 직후(재읽기 전) 새 문서를 쓰는 훅. [writes]가 true인 회차에만 쓴다. */
+    private inner class IntrudingHooks(private val writes: (Int) -> Boolean) : AccountDeletionHooks() {
+        val passes = mutableListOf<Int>()
+        override suspend fun afterDeletePass(uid: String, pass: Int) {
+            passes += pass
+            if (writes(pass)) put(uid, "places", "intruder-$pass", Place("intruder-$pass", "끼어든 가게", null, null, null, "ki-$pass", null, ResolveStatus.RESOLVED, 1L, 2L).toFields())
+        }
+    }
+
+    @Test
+    fun 삭제_도중_새_문서가_끼어들어도_재읽기를_반복해_0건이_될_때까지_지운다() = runBlocking {
+        assertEquals(LinkResult.Success, repo.linkWithGoogle(fakeToken("intruder")))
+        seedData(oldUid, places = 3, posts = 2, folders = 1)
+        val hooks = IntrudingHooks { pass -> pass == 1 } // 첫 삭제 뒤, 재읽기 전에 새 문서가 쓰인다
+        val gate = AccountOperationGate()
+
+        val result = realGateRepo(gate, hooks).deleteAccount(fakeToken("intruder"))
+
+        assertEquals(DeleteResult.Success, result)
+        listOf("places", "posts", "folders").forEach { assertEquals("$it 가 전부 지워졌다(끼어든 문서 포함)", 0, serverCount(oldUid, it)) }
+        assertFalse(serverExists(oldUid, "places/intruder-1"))
+        assertEquals("1회차(끼어듦) → 2회차(끼어든 문서 삭제) → 3회차(0건 확인)", listOf(1, 2), hooks.passes)
+        assertFalse(gate.isActive)
+    }
+
+    @Test
+    fun 삭제_회차를_다_써도_계속_끼어들면_DATA로_멈추고_Room은_건드리지_않고_게이트는_풀린다() = runBlocking {
+        assertEquals(LinkResult.Success, repo.linkWithGoogle(fakeToken("never-clean")))
+        seedData(oldUid, places = 2)
+        val hooks = IntrudingHooks { true } // 매 회차마다 새 문서가 쓰인다
+        val gate = AccountOperationGate()
+
+        val result = realGateRepo(gate, hooks).deleteAccount(fakeToken("never-clean"))
+
+        assertEquals(DeleteResult.Failed(DeleteStep.DATA), result)
+        assertEquals("MAX_DELETE_PASSES(3)번까지만 시도한다", listOf(1, 2, 3), hooks.passes)
+        assertFalse("계정 삭제·Room 비우기는 하지 않았다", cleanup.roomCleared)
+        assertFalse(store.read().closed)
+        assertTrue("계정은 그대로(다시 시도할 수 있다)", auth.currentUser != null && !auth.currentUser!!.isAnonymous)
+        assertFalse("실패해도 게이트가 풀린다", gate.isActive)
+    }
+
+    // ── 게이트 해제 보장 ──
+
+    @Test
+    fun 삭제하는_동안엔_게이트가_켜져_있고_성공하면_풀린다() = runBlocking {
+        seedData(oldUid, places = 2)
+        val gate = AccountOperationGate()
+        var activeDuringDeletion = false
+        val hooks = object : AccountDeletionHooks() {
+            override suspend fun afterDeletePass(uid: String, pass: Int) { activeDuringDeletion = gate.isActive }
+        }
+
+        val result = realGateRepo(gate, hooks).deleteAccount(null)
+
+        assertEquals(DeleteResult.Success, result)
+        assertTrue("삭제 중엔 켜져 있었다(공유 저장 Worker가 미룬다)", activeDuringDeletion)
+        assertFalse("끝나면 풀린다", gate.isActive)
+    }
+
+    @Test
+    fun 재인증_실패로_끝나도_게이트가_풀린다() = runBlocking {
+        assertEquals(LinkResult.Success, repo.linkWithGoogle(fakeToken("gate-reauth")))
+        val gate = AccountOperationGate()
+
+        val result = realGateRepo(gate).deleteAccount(null)
+
+        assertEquals(DeleteResult.Failed(DeleteStep.REAUTH, requiresReauth = true), result)
+        assertFalse(gate.isActive)
+    }
+
+    @Test
+    fun 서버가_오프라인이어서_데이터_삭제가_실패해도_게이트가_풀리고_데이터는_그대로다() = runBlocking {
+        assertEquals(LinkResult.Success, repo.linkWithGoogle(fakeToken("gate-offline")))
+        seedData(oldUid, places = 2)
+        val gate = AccountOperationGate()
+        firestore.disableNetwork().await() // Firestore만 끊는다(재인증은 Auth라 된다)
+        try {
+            val result = realGateRepo(gate).deleteAccount(fakeToken("gate-offline"))
+
+            assertEquals(DeleteResult.Failed(DeleteStep.DATA), result)
+            assertFalse(gate.isActive)
+        } finally {
+            firestore.enableNetwork().await()
+        }
+        assertEquals("데이터는 그대로", 2, serverCount(oldUid, "places"))
+        assertFalse(store.read().closed)
+    }
+
+    @Test
+    fun 삭제_도중_취소돼도_게이트가_풀린다() = runBlocking {
+        seedData(oldUid, places = 150, posts = 100)
+        val gate = AccountOperationGate()
+        val running = realGateRepo(gate)
+
+        val job = launch(Dispatchers.IO) { running.deleteAccount(null) }
+        withTimeout(10_000) { while (!gate.isActive && job.isActive) delay(1) } // 삭제가 시작돼 게이트가 켜질 때까지
+        job.cancelAndJoin()
+
+        assertFalse("취소돼도 finally가 게이트를 푼다", gate.isActive)
+    }
+
+    @Test
+    fun pause가_게이트를_켠_뒤_예외를_던져도_게이트가_풀리고_삭제_실패로_보고한다() = runBlocking {
+        seedData(oldUid, places = 2)
+        val gate = AccountOperationGate()
+        val throwingControl = object : AccountWorkControl {
+            override fun pause() { gate.isActive = true; throw IllegalStateException("WorkManager 취소 실패") }
+            override fun resume() { gate.isActive = false }
+        }
+
+        val result = newRepo(workControl = throwingControl).deleteAccount(null)
+
+        assertEquals("예외가 화면까지 번지지 않는다", DeleteResult.Failed(DeleteStep.DATA), result)
+        assertFalse("pause 중 예외여도 게이트가 풀린다", gate.isActive)
+        assertEquals("아무것도 지우지 않았다", 2, serverCount(oldUid, "places"))
+    }
+
+    @Test
+    fun 로그아웃과_합치기는_게이트를_켜지_않는다() = runBlocking {
+        val token = fakeToken("gate-never-set")
+        setUpCollision(token)
+        repo.prepareCollisionMerge()
+        repo.switchToExistingAccount(merge = true)
+        repo.signOut()
+
+        assertFalse("합치기·로그아웃은 작업 제어(게이트)를 쓰지 않는다 — 켜진 채 남을 수 없다", work.paused)
     }
 
     // ── 도우미 ──

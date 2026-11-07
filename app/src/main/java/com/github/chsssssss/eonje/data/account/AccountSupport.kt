@@ -24,6 +24,14 @@ class AccountOperationGate @Inject constructor() {
     var isActive: Boolean = false
 }
 
+/**
+ * 계정 삭제 중간에 끼어들 수 있는 이음새(테스트용). 운영에선 아무것도 안 한다. [afterDeletePass]는 한 회차의 삭제가 끝나고
+ * 서버를 다시 읽기 **전에** 불린다 — 삭제 도중에 다른 쪽(공유 저장 등)이 새 문서를 쓰는 상황을 테스트에서 만들 수 있게 한다.
+ */
+open class AccountDeletionHooks @Inject constructor() {
+    open suspend fun afterDeletePass(uid: String, pass: Int) = Unit
+}
+
 interface AccountWorkControl {
     /** 삭제 시작 전에: 공유 저장은 대기시키고, 캡션 파싱·Room 이전은 멈춘다. */
     fun pause()

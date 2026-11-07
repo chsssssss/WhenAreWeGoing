@@ -55,6 +55,7 @@ class AccountRepositoryImpl @Inject constructor(
     private val authSession: AuthSession,
     private val mergeJournal: AccountMergeJournal,
     private val mergeIo: AccountMergeIo,
+    private val deletionHooks: AccountDeletionHooks,
     @ApplicationScope scope: CoroutineScope,
 ) : AccountRepository {
 
@@ -212,8 +213,10 @@ class AccountRepositoryImpl @Inject constructor(
         val user = auth.currentUser ?: return DeleteResult.Failed(DeleteStep.DATA)
         val uid = user.uid
         val anonymous = user.isAnonymous
-        workControl.pause()
+        // pause()도 try 안에서 부른다: pause()가 게이트를 켠 뒤 예외를 던져도 finally가 반드시 resume()을 불러서 게이트가 풀린다.
+        // (밖에서 부르면 그 예외로 finally에 못 들어가 게이트가 프로세스가 끝날 때까지 켜진 채 남는다.)
         try {
+            workControl.pause()
             // 1) 연결된 계정은 먼저 재인증한다(최근 로그인이 아니면 계정 삭제가 거부된다).
             if (!anonymous) {
                 if (googleIdToken == null) return DeleteResult.Failed(DeleteStep.REAUTH, requiresReauth = true)
@@ -233,6 +236,7 @@ class AccountRepositoryImpl @Inject constructor(
                 var clean = false
                 for (pass in 1..MAX_DELETE_PASSES) {
                     if (deleteAllUserData(uid) == 0) { clean = true; break }
+                    deletionHooks.afterDeletePass(uid, pass)
                 }
                 check(clean) { "삭제 뒤에도 문서가 남았다" }
             } catch (e: CancellationException) {
@@ -261,14 +265,31 @@ class AccountRepositoryImpl @Inject constructor(
             }
 
             // 5) 로컬 정리. 사용자가 직접 요청한 삭제라서 Room의 옛 데이터도 비운다.
-            cleanup.clearDeviceCaches()
-            cleanup.clearLegacyRoom()
-            cleanup.requestFirestoreCacheClear()
+            // 서버 데이터와 계정은 이미 지워졌다 — 로컬 정리가 실패해도 삭제 실패로 보고하지 않는다(다음 시작에 고아 정리가 한다).
+            bestEffort("썸네일·동기화 기록 정리") { cleanup.clearDeviceCaches() }
+            bestEffort("Room 비우기") { cleanup.clearLegacyRoom() }
+            bestEffort("캐시 정리 예약") { cleanup.requestFirestoreCacheClear() }
             _state.value = currentState()
             authSession.startAnonymousSignIn()
             return DeleteResult.Success
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 위에서 단계별로 처리하지 못한 예외(예: pause 실패)도 호출자(화면)를 죽이지 않고 "데이터 단계에서 멈춤"으로 알린다.
+            Log.w(TAG, "계정 삭제 중 예상 못 한 오류(${e.javaClass.simpleName})")
+            return DeleteResult.Failed(DeleteStep.DATA)
         } finally {
             workControl.resume()
+        }
+    }
+
+    private suspend fun bestEffort(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "$what 실패(${e.javaClass.simpleName})")
         }
     }
 

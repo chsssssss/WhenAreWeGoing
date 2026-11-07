@@ -38,6 +38,15 @@ object FirestoreSetup {
     }
 
     /**
+     * 앱 시작(EonjeApplication)이 부르는 초기화: **설정 → 캐시 정리(요청됐으면)** 순서. Firestore는 첫 사용 전에만 설정을 바꾸고 캐시를
+     * 지울 수 있어서 이 둘이 어떤 저장소보다 먼저 와야 한다. [configure]는 테스트에서 에뮬레이터용 설정으로 바꿔 끼울 수 있다.
+     */
+    fun initialize(app: FirebaseApp, context: android.content.Context, configure: (FirebaseApp) -> Unit = ::configure) {
+        configure(app)
+        clearCacheIfRequested(app, context)
+    }
+
+    /**
      * 로그아웃·계정 삭제 뒤 "다음 콜드 스타트에 캐시를 지운다"고 표시해 둔 경우 지운다. Firestore는 첫 사용 **전에만** 캐시를 지울 수 있어서
      * 실행 중엔 못 한다 — [configure] 직후, 어떤 저장소도 만들어지기 전에 부른다. 지우기에 성공해야 표시를 없앤다(실패하면 다음에 다시).
      */

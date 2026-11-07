@@ -101,8 +101,7 @@ class EonjeApplication : Application(), Configuration.Provider {
      */
     private fun initFirestoreAndAuth() {
         val app = FirebaseApp.getApps(this).firstOrNull { it.name == WHEREWEGOING_FIREBASE_APP_NAME } ?: return
-        FirestoreSetup.configure(app)
-        FirestoreSetup.clearCacheIfRequested(app, this)
+        FirestoreSetup.initialize(app, this) // 설정 → (요청됐으면) 캐시 정리. 어떤 저장소보다 먼저
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).authSession().startAnonymousSignIn()
         // 계정 합치기가 도중에 끊겼으면(저널이 남아 있으면) 이어서 끝낸다. 없으면 파일 존재 확인뿐이다.
         EntryPointAccessors.fromApplication(this, AuthSessionEntryPoint::class.java).let { entry ->
